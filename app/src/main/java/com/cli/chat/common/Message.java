@@ -1,5 +1,11 @@
 package com.cli.chat.common;
 
-public class Message {
+public record Message(
+    MessageType type,
+    String sender,
+    String recipient, //nullable
+    String body,
+    long timestamp
+) {
 
 }
