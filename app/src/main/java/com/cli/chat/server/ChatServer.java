@@ -8,6 +8,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import com.cli.chat.common.Message;
+
 public class ChatServer {
 
     private static final int DEFAULT_PORT = 5000;
@@ -60,7 +62,7 @@ public class ChatServer {
         return boundPort;
     }
 
-    void broadcast(String msg, ClientHandler sender) {
+    void broadcast(Message msg, ClientHandler sender) {
         for (ClientHandler c : clients) {
             if (c != sender) {
                 c.send(msg);

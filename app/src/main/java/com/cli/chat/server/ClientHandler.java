@@ -6,6 +6,9 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 
+import com.cli.chat.common.Message;
+import com.cli.chat.common.Protocol;
+
 public class ClientHandler implements Runnable {
 
     private final Socket socket;
@@ -27,12 +30,24 @@ public class ClientHandler implements Runnable {
             out.println("Enter your name:");
             name = in.readLine();
             if (name == null || name.isBlank()) name = "anon";
-            server.broadcast("*** " + name + " joined ***", this);
+            server.broadcast(Message.system("*** " + name + " joined ***"), this);
 
             String line;
             while ((line = in.readLine()) != null) {
-                if (line.equalsIgnoreCase("/quit")) break;
-                server.broadcast("[" + name + "] " + line, this);
+                Message msg;
+                try {
+                    msg = Protocol.decode(line);
+                } catch (IOException e) {
+                    // malformed line; skip it
+                    continue;
+                }
+                switch (msg.type()) {
+                    case BROADCAST -> server.broadcast(Message.broadcast(name, msg.body()), this);
+                    case QUIT -> {
+                        return;
+                    }
+                    default -> send(Message.error("Unexpected message type: " + msg.type()));
+                }
             }
         } catch (IOException e) {
             // client dropped
@@ -41,13 +56,18 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    void send(String msg) {
-        if (out != null) out.println(msg);
+    void send(Message msg) {
+        if (out == null) return;
+        try {
+            out.println(Protocol.encode(msg));
+        } catch (IOException e) {
+            // message could not be serialised; drop it
+        }
     }
 
     private void close() {
         server.remove(this);
-        server.broadcast("*** " + name + " left ***", this);
+        server.broadcast(Message.system("*** " + name + " left ***"), this);
         try { socket.close(); } catch (IOException ignored) {}
     }
 }
