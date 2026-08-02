@@ -38,7 +38,12 @@ public class ClientHandler implements Runnable {
                 try {
                     msg = Protocol.decode(line);
                 } catch (IOException e) {
-                    // malformed line; skip it
+                    send(Message.error("malformed message: could not parse as JSON"));
+                    continue;
+                }
+
+                if (msg.type() == null) {
+                    send(Message.error("malformed message: missing or unknown type"));
                     continue;
                 }
                 switch (msg.type()) {

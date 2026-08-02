@@ -65,6 +65,33 @@ class ChatServerTest {
     }
 
     @Test
+    void malformedJsonGetsErrorButKeepsConnectionAlive() throws Exception {
+        try (TestClient tester = connect("tester")) {
+
+            tester.out.println("{not valid json");
+
+            Message reply = tester.receive();
+            assertEquals(MessageType.ERROR, reply.type());
+            assertTrue(reply.body().contains("malformed"));
+
+            tester.send(chat("still here"));
+
+        }
+    }
+
+    @Test
+    void validJsonWithNoTypeIsRejectedWithoutCrashing() throws Exception {
+        try (TestClient tester = connect("tester")) {
+            tester.out.println("{\"foo\":\"bar\"}");  
+
+            Message reply = tester.receive();
+            assertEquals(MessageType.ERROR, reply.type());
+
+            tester.send(chat("recovered"));
+        }
+    }
+
+    @Test
     void messageReachesOtherClients() throws Exception {
         try (TestClient alice = connect("alice");
              TestClient bob = connect("bob")) {
