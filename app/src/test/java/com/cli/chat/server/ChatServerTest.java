@@ -96,7 +96,7 @@ class ChatServerTest {
         try (TestClient alice = connect("alice");
              TestClient bob = connect("bob")) {
 
-            alice.receive();                     // "*** bob joined ***"
+            alice.receive();                     // "bob joined"
 
             alice.send(chat("hello"));
 
@@ -112,10 +112,10 @@ class ChatServerTest {
         try (TestClient alice = connect("alice");
              TestClient bob = connect("bob")) {
 
-            alice.receive();                     // "*** bob joined ***"
+            alice.receive();                     
 
             alice.send(chat("hello"));
-            bob.receive();                       // bob got it
+            bob.receive();                       
 
             assertThrows(SocketTimeoutException.class, alice.in::readLine,
                     "sender must not receive its own broadcast");
@@ -130,7 +130,7 @@ class ChatServerTest {
             Message join = alice.receive();
             assertEquals(MessageType.SYSTEM, join.type());
             assertEquals("SERVER", join.sender());
-            assertEquals("*** bob joined ***", join.body());
+            assertEquals("bob joined", join.body());
         }
     }
 
@@ -138,14 +138,14 @@ class ChatServerTest {
     void quitIsAnnouncedToRemainingClients() throws Exception {
         try (TestClient alice = connect("alice")) {
             TestClient bob = connect("bob");
-            alice.receive();                     // "*** bob joined ***"
+            alice.receive();                     
 
             bob.send(new Message(MessageType.QUIT, "bob", null, "", 0L));
             bob.close();
 
             Message left = alice.receive();
             assertEquals(MessageType.SYSTEM, left.type());
-            assertEquals("*** bob left ***", left.body());
+            assertEquals("bob left", left.body());
         }
     }
 
@@ -154,7 +154,7 @@ class ChatServerTest {
         try (TestClient alice = connect("alice");
              TestClient bob = connect("bob")) {
 
-            alice.receive();                     // "*** bob joined ***"
+            alice.receive();                    
 
             alice.out.println("{not valid json");
             alice.send(chat("still here"));
@@ -166,20 +166,28 @@ class ChatServerTest {
     @Test
     void unexpectedTypeIsRejectedWithAnError() throws Exception {
         try (TestClient alice = connect("alice")) {
-            alice.send(new Message(MessageType.CHAT, "alice", null, "hello", 0L));
+            // BROADCAST is a server-to-client type; the server rejects it from a client
+            alice.send(new Message(MessageType.BROADCAST, "alice", null, "hello", 0L));
 
             Message reply = alice.receive();
             assertEquals(MessageType.ERROR, reply.type());
-            assertTrue(reply.body().contains("CHAT"), "error should name the rejected type");
+            assertTrue(reply.body().contains("BROADCAST"), "error should name the rejected type");
+        }
+    }
+
+    @Test
+    void registryTracksOnlineUsers() throws Exception {
+        try (TestClient alice = connect("alice");
+             TestClient bob = connect("bob")) {
+            alice.receive();
         }
     }
 
     /** A client-to-server chat line, as the server currently expects it. */
     private static Message chat(String body) {
-        return new Message(MessageType.BROADCAST, "ignored", null, body, 0L);
+        return new Message(MessageType.CHAT, "ignored", null, body, 0L);
     }
 
-    /** Socket + reader/writer bundle that speaks JSON lines and closes cleanly. */
     private static class TestClient implements AutoCloseable {
         final Socket socket;
         final BufferedReader in;

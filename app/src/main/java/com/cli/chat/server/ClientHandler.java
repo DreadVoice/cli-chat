@@ -23,14 +23,17 @@ public class ClientHandler implements Runnable {
 
     @Override
     public void run() {
+        ClientRegistry registry = server.registry();
         try (BufferedReader in = new BufferedReader(
                 new InputStreamReader(socket.getInputStream()))) {
             out = new PrintWriter(socket.getOutputStream(), true);
 
-            out.println("Enter your name:");
-            name = in.readLine();
-            if (name == null || name.isBlank()) name = "anon";
-            server.broadcast(Message.system("*** " + name + " joined ***"), this);
+            send(Message.system("Enter your name:"));
+            String first = in.readLine();
+            name = (first == null || first.isBlank()) ? "anon" : first;
+
+            registry.add(name, this);       // register once the name is known
+            registry.broadcast(Message.system(name + " joined"), this);
 
             String line;
             while ((line = in.readLine()) != null) {
@@ -41,24 +44,31 @@ public class ClientHandler implements Runnable {
                     send(Message.error("malformed message: could not parse as JSON"));
                     continue;
                 }
-
                 if (msg.type() == null) {
                     send(Message.error("malformed message: missing or unknown type"));
                     continue;
                 }
                 switch (msg.type()) {
-                    case BROADCAST -> server.broadcast(Message.broadcast(name, msg.body()), this);
-                    case QUIT -> {
-                        return;
-                    }
-                    default -> send(Message.error("Unexpected message type: " + msg.type()));
+                    case CHAT -> registry.broadcast(Message.broadcast(name, msg.body()), this);
+                    case QUIT -> { return; }
+                    default   -> send(Message.error("unexpected type: " + msg.type()));
                 }
             }
         } catch (IOException e) {
             // client dropped
         } finally {
-            close();
+            close(registry);
         }
+    }
+
+    private void close(ClientRegistry registry) {
+        registry.remove(name);
+        registry.broadcast(Message.system(name + " left"), this);
+        try { socket.close(); } catch (IOException ignored) {}
+    }
+
+    String getUsername() {
+        return name;
     }
 
     void send(Message msg) {
@@ -68,11 +78,5 @@ public class ClientHandler implements Runnable {
         } catch (IOException e) {
             // message could not be serialised; drop it
         }
-    }
-
-    private void close() {
-        server.remove(this);
-        server.broadcast(Message.system("*** " + name + " left ***"), this);
-        try { socket.close(); } catch (IOException ignored) {}
     }
 }
