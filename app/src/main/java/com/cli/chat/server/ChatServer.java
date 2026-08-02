@@ -3,8 +3,6 @@ package com.cli.chat.server;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -15,7 +13,7 @@ public class ChatServer {
     private static final int DEFAULT_PORT = 5000;
 
     private final int requestedPort;
-    private final Set<ClientHandler> clients = ConcurrentHashMap.newKeySet();
+    private final ClientRegistry registry = new ClientRegistry();
     private final ExecutorService pool = Executors.newCachedThreadPool();
 
     private ServerSocket serverSocket;
@@ -24,6 +22,10 @@ public class ChatServer {
 
     public ChatServer(int port) {
         this.requestedPort = port;
+    }
+
+    ClientRegistry registry() {   // handlers need access to it
+        return registry;
     }
 
     public void start() throws IOException {
@@ -35,13 +37,9 @@ public class ChatServer {
         while (running) {
             try {
                 Socket socket = serverSocket.accept();
-                ClientHandler handler = new ClientHandler(socket, this);
-                clients.add(handler);
-                pool.execute(handler);
+                pool.execute(new ClientHandler(socket, this));
             } catch (IOException e) {
-                if (running) {
-                    throw e;            
-                }
+                if (running) throw e;
             }
         }
     }
@@ -63,15 +61,11 @@ public class ChatServer {
     }
 
     void broadcast(Message msg, ClientHandler sender) {
-        for (ClientHandler c : clients) {
-            if (c != sender) {
-                c.send(msg);
-            }
-        }
+        registry.broadcast(msg, sender);
     }
 
     void remove(ClientHandler c) {
-        clients.remove(c);
+        registry.remove(c.getUsername());
     }
 
     public static void main(String[] args) throws IOException {
