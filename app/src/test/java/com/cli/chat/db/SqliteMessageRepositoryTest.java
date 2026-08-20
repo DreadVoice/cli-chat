@@ -3,6 +3,7 @@ package com.cli.chat.db;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -91,6 +92,46 @@ class SqliteMessageRepositoryTest {
         messages.save(broadcast("alice", "second", 1000L));
 
         assertEquals(List.of("first", "second"),
+                messages.recent(10).stream().map(Message::body).toList());
+    }
+
+    @Test
+    void saveAllStoresEveryMessageInOrder() throws Exception {
+        messages.saveAll(List.of(
+                broadcast("alice", "first", 1000L),
+                broadcast("bob", "second", 2000L),
+                broadcast("carol", "third", 3000L)));
+
+        assertEquals(List.of("first", "second", "third"),
+                messages.recent(10).stream().map(Message::body).toList());
+    }
+
+    @Test
+    void saveAllAcceptsAnEmptyBatch() throws Exception {
+        messages.saveAll(List.of());
+
+        assertTrue(messages.recent(10).isEmpty());
+    }
+
+    @Test
+    void aFailedBatchIsRolledBackEntirely() throws Exception {
+        messages.save(broadcast("alice", "before", 500L));
+
+        Message unwritable = new Message(MessageType.BROADCAST, null, null, "poison", 1000L);
+        assertThrows(StorageException.class, () -> messages.saveAll(List.of(
+                broadcast("alice", "one", 1000L),
+                broadcast("alice", "two", 2000L),
+                unwritable)));
+
+        assertEquals(List.of("before"), messages.recent(10).stream().map(Message::body).toList());
+    }
+
+    @Test
+    void saveAllMixesWithSave() throws Exception {
+        messages.save(broadcast("alice", "single", 1000L));
+        messages.saveAll(List.of(broadcast("bob", "batched", 2000L)));
+
+        assertEquals(List.of("single", "batched"),
                 messages.recent(10).stream().map(Message::body).toList());
     }
 }

@@ -78,6 +78,13 @@ class MessageWriterTest {
             }
 
             @Override
+            public void saveAll(List<Message> batch) throws StorageException {
+                for (Message message : batch) {
+                    save(message);
+                }
+            }
+
+            @Override
             public List<Message> recent(int limit) throws StorageException {
                 return messages.recent(limit);
             }
@@ -120,6 +127,13 @@ class MessageWriterTest {
             }
 
             @Override
+            public void saveAll(List<Message> batch) {
+                for (Message message : batch) {
+                    save(message);
+                }
+            }
+
+            @Override
             public List<Message> recent(int limit) {
                 return List.of();
             }
@@ -146,14 +160,20 @@ class MessageWriterTest {
 
     @Test
     void aFailingSaveDoesNotKillTheWriter() throws Exception {
-        AtomicBoolean failNext = new AtomicBoolean(true);
         MessageRepository flaky = new MessageRepository() {
             @Override
             public long save(Message message) throws StorageException {
-                if (failNext.getAndSet(false)) {
+                if ("lost".equals(message.body())) {
                     throw new StorageException("disk on fire");
                 }
                 return messages.save(message);
+            }
+
+            @Override
+            public void saveAll(List<Message> batch) throws StorageException {
+                for (Message message : batch) {
+                    save(message);
+                }
             }
 
             @Override

@@ -53,6 +53,33 @@ public class SqliteMessageRepository implements MessageRepository {
     }
 
     @Override
+    public void saveAll(List<Message> messages) throws StorageException {
+        if (messages.isEmpty()) {
+            return;
+        }
+        try (Connection connection = database.open()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement statement = connection.prepareStatement(INSERT)) {
+                for (Message message : messages) {
+                    statement.setString(1, message.type().name());
+                    statement.setString(2, message.sender());
+                    statement.setString(3, message.recipient());
+                    statement.setString(4, message.body());
+                    statement.setLong(5, message.timestamp());
+                    statement.addBatch();
+                }
+                statement.executeBatch();
+                connection.commit();
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            }
+        } catch (SQLException e) {
+            throw new StorageException("could not save a batch of " + messages.size() + " messages", e);
+        }
+    }
+
+    @Override
     public List<Message> recent(int limit) throws StorageException {
         try (Connection connection = database.open();
              PreparedStatement statement = connection.prepareStatement(SELECT_RECENT)) {

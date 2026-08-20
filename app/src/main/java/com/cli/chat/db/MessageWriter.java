@@ -19,6 +19,7 @@ public class MessageWriter implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(MessageWriter.class);
 
     private static final int DEFAULT_CAPACITY = 10_000;
+    private static final int MAX_BATCH = 100;
     private static final long SHUTDOWN_TIMEOUT_MS = 5_000;
     private static final Message POISON =
             new Message(MessageType.SYSTEM, "SERVER", null, null, 0L);
@@ -81,14 +82,16 @@ public class MessageWriter implements AutoCloseable {
     }
 
     private void drain() {
+        List<Message> batch = new ArrayList<>(MAX_BATCH);
         try {
             while (true) {
-                Message message = queue.take();
-                if (message == POISON) {
+                batch.clear();
+                batch.add(queue.take());
+                queue.drainTo(batch, MAX_BATCH - 1);
+                if (persistBatch(batch)) {
                     persistRemaining();
                     return;
                 }
-                persist(message);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -98,8 +101,33 @@ public class MessageWriter implements AutoCloseable {
     private void persistRemaining() {
         List<Message> remaining = new ArrayList<>();
         queue.drainTo(remaining);
-        for (Message message : remaining) {
-            if (message != POISON) {
+        for (int from = 0; from < remaining.size(); from += MAX_BATCH) {
+            persistBatch(remaining.subList(from, Math.min(from + MAX_BATCH, remaining.size())));
+        }
+    }
+
+    private boolean persistBatch(List<Message> batch) {
+        boolean shutdown = false;
+        List<Message> persistable = new ArrayList<>(batch.size());
+        for (Message message : batch) {
+            if (message == POISON) {
+                shutdown = true;
+            } else {
+                persistable.add(message);
+            }
+        }
+        if (!persistable.isEmpty()) {
+            persist(persistable);
+        }
+        return shutdown;
+    }
+
+    private void persist(List<Message> batch) {
+        try {
+            repository.saveAll(batch);
+        } catch (StorageException e) {
+            log.error("could not persist a batch of {} messages, retrying one by one", batch.size(), e);
+            for (Message message : batch) {
                 persist(message);
             }
         }
