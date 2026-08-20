@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,10 +13,15 @@ import org.slf4j.LoggerFactory;
 import com.cli.chat.common.Message;
 import com.cli.chat.common.Protocol;
 import com.cli.chat.common.exception.ProtocolException;
+import com.cli.chat.common.exception.StorageException;
+import com.cli.chat.db.MessageRepository;
+import com.cli.chat.db.MessageWriter;
 
 public class ClientHandler implements Runnable {
 
     private static final Logger log = LoggerFactory.getLogger(ClientHandler.class);
+
+    private static final int HISTORY_SIZE = 20;
 
     private final Socket socket;
     private final ChatServer server;
@@ -37,6 +43,7 @@ public class ClientHandler implements Runnable {
 
             if (!register(in, registry)) return;
             log.info("{} joined, {} online", name, registry.size());
+            sendHistory();
             registry.broadcast(Message.system(name + " joined"), this);
 
             String line;
@@ -55,7 +62,11 @@ public class ClientHandler implements Runnable {
                     continue;
                 }
                 switch (msg.type()) {
-                    case CHAT -> registry.broadcast(Message.broadcast(name, msg.body()), this);
+                    case CHAT -> {
+                        Message broadcast = Message.broadcast(name, msg.body());
+                        persist(broadcast);
+                        registry.broadcast(broadcast, this);
+                    }
                     case USER_LIST -> send(Message.userList(registry.onlineUsers()));
                     case QUIT -> { return; }
                     default   -> {
@@ -85,6 +96,32 @@ public class ClientHandler implements Runnable {
             send(Message.system("Enter your name:"));
         }
         return false;
+    }
+
+    private void sendHistory() {
+        MessageRepository history = server.history();
+        if (history == null) {
+            return;
+        }
+        try {
+            List<Message> recent = history.recent(HISTORY_SIZE);
+            if (recent.isEmpty()) {
+                return;
+            }
+            send(Message.system("last " + recent.size() + " messages"));
+            for (Message message : recent) {
+                send(message);
+            }
+        } catch (StorageException e) {
+            log.error("could not read the history for {}", name, e);
+        }
+    }
+
+    private void persist(Message message) {
+        MessageWriter writer = server.writer();
+        if (writer != null) {
+            writer.submit(message);
+        }
     }
 
     private void close(ClientRegistry registry) {

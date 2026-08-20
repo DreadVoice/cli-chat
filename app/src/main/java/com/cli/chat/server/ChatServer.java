@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import com.cli.chat.common.Message;
 import com.cli.chat.common.exception.StorageException;
 import com.cli.chat.db.Database;
+import com.cli.chat.db.MessageRepository;
 import com.cli.chat.db.MessageWriter;
 import com.cli.chat.db.SqliteMessageRepository;
 
@@ -26,6 +27,7 @@ public class ChatServer {
 
     private final int requestedPort;
     private final MessageWriter writer;
+    private final MessageRepository history;
     private final ClientRegistry registry = new ClientRegistry();
     private final ExecutorService pool = Executors.newCachedThreadPool();
 
@@ -34,12 +36,25 @@ public class ChatServer {
     private int boundPort;
 
     public ChatServer(int port) {
-        this(port, null);
+        this(port, null, null);
     }
 
     public ChatServer(int port, MessageWriter writer) {
+        this(port, writer, null);
+    }
+
+    public ChatServer(int port, MessageWriter writer, MessageRepository history) {
         this.requestedPort = port;
         this.writer = writer;
+        this.history = history;
+    }
+
+    MessageWriter writer() {
+        return writer;
+    }
+
+    MessageRepository history() {
+        return history;
     }
 
     ClientRegistry registry() {  
@@ -115,10 +130,11 @@ public class ChatServer {
         Database database = Database.file(databasePath);
         database.initialise();
 
-        MessageWriter writer = new MessageWriter(new SqliteMessageRepository(database));
+        SqliteMessageRepository repository = new SqliteMessageRepository(database);
+        MessageWriter writer = new MessageWriter(repository);
         writer.start();
 
-        ChatServer server = new ChatServer(port, writer);
+        ChatServer server = new ChatServer(port, writer, repository);
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "shutdown"));
         server.start();
     }
