@@ -21,8 +21,16 @@ public class Database {
 
     private final String url;
 
-    public Database(String path) {
-        this.url = "jdbc:sqlite:" + path;
+    private Database(String url) {
+        this.url = url;
+    }
+
+    public static Database file(String path) {
+        return new Database("jdbc:sqlite:" + path);
+    }
+
+    public static Database inMemory(String name) {
+        return new Database("jdbc:sqlite:file:" + name + "?mode=memory&cache=shared");
     }
 
     public Connection open() throws StorageException {

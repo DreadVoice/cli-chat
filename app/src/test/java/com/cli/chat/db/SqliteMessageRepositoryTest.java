@@ -5,12 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.nio.file.Path;
 import java.util.List;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 import com.cli.chat.common.Message;
 import com.cli.chat.common.MessageType;
@@ -18,16 +17,19 @@ import com.cli.chat.common.exception.StorageException;
 
 class SqliteMessageRepositoryTest {
 
-    @TempDir
-    Path dir;
+    private InMemoryDatabase database;
 
     private MessageRepository messages;
 
     @BeforeEach
     void createRepository() throws StorageException {
-        Database database = new Database(dir.resolve("chat.db").toString());
-        database.initialise();
-        messages = new SqliteMessageRepository(database);
+        database = InMemoryDatabase.create();
+        messages = new SqliteMessageRepository(database.database());
+    }
+
+    @AfterEach
+    void closeDatabase() throws Exception {
+        database.close();
     }
 
     private static Message broadcast(String sender, String body, long timestamp) {

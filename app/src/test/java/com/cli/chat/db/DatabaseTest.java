@@ -28,7 +28,7 @@ class DatabaseTest {
 
     @BeforeEach
     void createDatabase() throws StorageException {
-        database = new Database(dir.resolve("chat.db").toString());
+        database = Database.file(dir.resolve("chat.db").toString());
         database.initialise();
     }
 
@@ -62,7 +62,7 @@ class DatabaseTest {
 
     @Test
     void openFailsWithAStorageExceptionForAnUnusablePath() {
-        Database broken = new Database(dir.resolve("missing-dir").resolve("chat.db").toString());
+        Database broken = Database.file(dir.resolve("missing-dir").resolve("chat.db").toString());
 
         StorageException e = assertThrows(StorageException.class, broken::open);
         assertInstanceOf(ChatException.class, e);
@@ -84,6 +84,30 @@ class DatabaseTest {
              Statement s = c.createStatement();
              ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM users")) {
             return rs.getInt(1);
+        }
+    }
+
+    @Test
+    void anInMemoryDatabaseLivesAsLongAsAConnectionIsHeld() throws Exception {
+        try (InMemoryDatabase memory = InMemoryDatabase.create();
+             Connection c = memory.database().open();
+             Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery(
+                     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'users'")) {
+
+            assertTrue(rs.next(), "the schema must be visible to a second connection");
+        }
+    }
+
+    @Test
+    void inMemoryDatabasesAreIsolatedFromEachOther() throws Exception {
+        try (InMemoryDatabase first = InMemoryDatabase.create();
+             InMemoryDatabase second = InMemoryDatabase.create()) {
+
+            new SqliteUserRepository(first.database()).create("alice", "hash");
+
+            assertTrue(new SqliteUserRepository(second.database()).findByUsername("alice").isEmpty(),
+                    "each in-memory database must be a separate store");
         }
     }
 }

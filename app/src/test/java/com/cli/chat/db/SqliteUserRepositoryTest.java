@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -16,9 +15,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 import com.cli.chat.common.User;
 import com.cli.chat.common.exception.StorageException;
@@ -26,16 +25,19 @@ import com.cli.chat.common.exception.UsernameTakenException;
 
 class SqliteUserRepositoryTest {
 
-    @TempDir
-    Path dir;
+    private InMemoryDatabase database;
 
     private UserRepository users;
 
     @BeforeEach
     void createRepository() throws StorageException {
-        Database database = new Database(dir.resolve("chat.db").toString());
-        database.initialise();
-        users = new SqliteUserRepository(database);
+        database = InMemoryDatabase.create();
+        users = new SqliteUserRepository(database.database());
+    }
+
+    @AfterEach
+    void closeDatabase() throws Exception {
+        database.close();
     }
 
     @Test
