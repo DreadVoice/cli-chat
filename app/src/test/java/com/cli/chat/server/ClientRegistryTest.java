@@ -1,8 +1,5 @@
 package com.cli.chat.server;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CyclicBarrier;
@@ -12,11 +9,12 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 
 class ClientRegistryTest {
 
-    /** Handlers are only map values here, so an unwired one is enough. */
     private static ClientHandler handler() {
         return new ClientHandler(null, null);
     }
@@ -47,10 +45,22 @@ class ClientRegistryTest {
         assertTrue(registry.find("alice").isEmpty());
     }
 
-    /**
-     * Hammers the same name from many threads, over many rounds, so a
-     * check-then-put implementation loses the race somewhere in the run.
-     */
+    @Test
+    void onlineUsersIsASortedSnapshotThatDoesNotTrackLaterChanges() {
+        ClientRegistry registry = new ClientRegistry();
+        registry.addIfAbsent("carol", handler());
+        registry.addIfAbsent("alice", handler());
+        registry.addIfAbsent("bob", handler());
+
+        List<String> snapshot = registry.onlineUsers();
+        assertEquals(List.of("alice", "bob", "carol"), snapshot);
+
+        registry.addIfAbsent("dave", handler());
+        assertEquals(List.of("alice", "bob", "carol"), snapshot, "the snapshot must not change under us");
+        assertEquals(List.of("alice", "bob", "carol", "dave"), registry.onlineUsers());
+    }
+
+
     @Test
     void concurrentClaimsOfTheSameNameLeaveExactlyOneWinner() throws Exception {
         final int threads = Math.max(4, Runtime.getRuntime().availableProcessors());
@@ -71,7 +81,7 @@ class ClientRegistryTest {
                 List<Future<?>> claims = new ArrayList<>();
                 for (int t = 0; t < threads; t++) {
                     claims.add(pool.submit(() -> {
-                        lineUp.await();                       // fire together
+                        lineUp.await();                       
                         if (registry.addIfAbsent(name, handler())) {
                             winners.incrementAndGet();
                         }

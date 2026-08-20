@@ -47,6 +47,7 @@ public class ClientHandler implements Runnable {
                 }
                 switch (msg.type()) {
                     case CHAT -> registry.broadcast(Message.broadcast(name, msg.body()), this);
+                    case USER_LIST -> send(Message.userList(registry.onlineUsers()));
                     case QUIT -> { return; }
                     default   -> send(Message.error("unexpected type: " + msg.type()));
                 }
@@ -58,13 +59,7 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    /**
-     * Prompts for a name until the client claims a free one or disconnects.
-     * The claim itself is atomic, so of two clients racing on the same name
-     * exactly one wins and the other is asked again.
-     *
-     * @return true if this handler now owns {@link #name} in the registry
-     */
+
     private boolean register(BufferedReader in, ClientRegistry registry) throws IOException {
         send(Message.system("Enter your name:"));
         String line;
@@ -98,11 +93,10 @@ public class ClientHandler implements Runnable {
         try {
             sendRaw(Protocol.encode(msg));
         } catch (IOException e) {
-            // message could not be serialised; drop it
+            
         }
     }
 
-    /** Writes an already-encoded line, so a broadcast encodes once for all recipients. */
     void sendRaw(String line) {
         if (out == null) return;
         out.println(line);

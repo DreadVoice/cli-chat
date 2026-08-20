@@ -45,7 +45,6 @@ class ChatServerTest {
         serverThread.setDaemon(true);
         serverThread.start();
 
-        // wait for the port to be bound rather than sleeping a fixed amount
         long deadline = System.currentTimeMillis() + 2000;
         while (server.getPort() == 0 && System.currentTimeMillis() < deadline) {
             Thread.sleep(10);
@@ -58,10 +57,9 @@ class ChatServerTest {
         server.stop();
     }
 
-    /** Connects, consumes the plain-text name prompt, sends a name. */
     private TestClient connect(String name) throws IOException {
         TestClient c = new TestClient(server.getPort());
-        c.in.readLine();          // "Enter your name:" — handshake is still plain text
+        c.in.readLine();          
         c.out.println(name);
         return c;
     }
@@ -196,14 +194,14 @@ class ChatServerTest {
         try (TestClient alice = connect("alice");
              TestClient impostor = new TestClient(server.getPort())) {
 
-            impostor.in.readLine();              // name prompt
-            impostor.out.println("alice");       // already taken
+            impostor.in.readLine();              
+            impostor.out.println("alice");       
 
             Message reply = impostor.receive();
             assertEquals(MessageType.ERROR, reply.type());
             assertTrue(reply.body().contains("alice"), "error should name the rejected username");
 
-            impostor.in.readLine();              // prompted again
+            impostor.in.readLine();              
             impostor.out.println("bob");
 
             Message join = alice.receive();
@@ -224,12 +222,12 @@ class ChatServerTest {
             try {
                 List<Future<Message>> outcomes = new ArrayList<>();
                 for (int i = 0; i < racers; i++) {
-                    // null == the server stayed silent, i.e. the name was accepted
+                    
                     Callable<Message> racer = () -> {
                         TestClient c = new TestClient(server.getPort());
                         connected.add(c);
                         c.in.readLine();                 // name prompt
-                        lineUp.await();                  // fire the claims together
+                        lineUp.await();                  
                         c.out.println("racer");
                         try {
                             return c.receive();
@@ -261,6 +259,52 @@ class ChatServerTest {
                 pool.shutdownNow();
                 connected.forEach(TestClient::close);
             }
+        }
+    }
+
+    @Test
+    void userListRequestReturnsEveryoneOnlineIncludingTheRequester() throws Exception {
+        try (TestClient alice = connect("alice");
+             TestClient bob = connect("bob")) {
+
+            alice.receive();                     // "bob joined"
+
+            alice.send(new Message(MessageType.USER_LIST, "alice", null, null, 0L));
+
+            Message roster = alice.receive();
+            assertEquals(MessageType.USER_LIST, roster.type());
+            assertEquals("SERVER", roster.sender());
+            assertEquals("alice, bob", roster.body(), "roster is sorted and includes the requester");
+        }
+    }
+
+    @Test
+    void userListReflectsClientsLeaving() throws Exception {
+        try (TestClient alice = connect("alice")) {
+            TestClient bob = connect("bob");
+            alice.receive();                     // "bob joined"
+
+            bob.send(new Message(MessageType.QUIT, "bob", null, "", 0L));
+            bob.close();
+            alice.receive();                     // "bob left" — bob is off the registry by now
+
+            alice.send(new Message(MessageType.USER_LIST, "alice", null, null, 0L));
+            assertEquals("alice", alice.receive().body());
+        }
+    }
+
+    @Test
+    void userListIsNotBroadcastToOtherClients() throws Exception {
+        try (TestClient alice = connect("alice");
+             TestClient bob = connect("bob")) {
+
+            alice.receive();                     // "bob joined"
+
+            alice.send(new Message(MessageType.USER_LIST, "alice", null, null, 0L));
+            alice.receive();                     // roster, to alice only
+
+            assertThrows(SocketTimeoutException.class, bob.in::readLine,
+                    "a roster request must not reach other clients");
         }
     }
 

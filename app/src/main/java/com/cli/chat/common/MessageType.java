@@ -1,7 +1,6 @@
 package com.cli.chat.common;
 
 public enum MessageType {
-    // client to server
     LOGIN,
     REGISTER,
     CHAT,
@@ -9,7 +8,6 @@ public enum MessageType {
     COMMAND,
     QUIT,
 
-    // server to client
     LOGIN_SUCCESS,
     LOGIN_FAILURE,
     BROADCAST,

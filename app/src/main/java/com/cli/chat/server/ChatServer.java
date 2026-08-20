@@ -24,7 +24,7 @@ public class ChatServer {
         this.requestedPort = port;
     }
 
-    ClientRegistry registry() {   // handlers need access to it
+    ClientRegistry registry() {  
         return registry;
     }
 
@@ -51,7 +51,6 @@ public class ChatServer {
                 serverSocket.close();   
             }
         } catch (IOException ignored) {
-            // proper handling to be implemented
         }
         pool.shutdown();
     }

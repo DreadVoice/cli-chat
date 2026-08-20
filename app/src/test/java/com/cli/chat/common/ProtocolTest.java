@@ -32,7 +32,7 @@ class ProtocolTest {
         Message result = Protocol.decode(Protocol.encode(original));
 
         assertEquals(original, result);
-        assertEquals("bob", result.recipient());   // target specifically preserved
+        assertEquals("bob", result.recipient());   
     }
 
     @ParameterizedTest
@@ -68,8 +68,8 @@ class ProtocolTest {
         String encoded = Protocol.encode(original);
         Message result = Protocol.decode(encoded);
 
-        assertEquals(tricky, result.body());               // content preserved
-        assertEquals(1, encoded.lines().count());          // still ONE physical line
+        assertEquals(tricky, result.body());               
+        assertEquals(1, encoded.lines().count());          
     }
 
     @Test

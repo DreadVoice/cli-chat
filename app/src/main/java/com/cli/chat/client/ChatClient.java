@@ -67,12 +67,16 @@ public class ChatClient {
                         MessageType.QUIT, username, null, null, System.currentTimeMillis())));
                 break;
             }
+            if (line.equalsIgnoreCase("/who")) {
+                out.println(encode(new Message(
+                        MessageType.USER_LIST, username, null, null, System.currentTimeMillis())));
+                continue;
+            }
             out.println(encode(new Message(
                     MessageType.CHAT, username, null, line, System.currentTimeMillis())));
         }
     }
 
-    // --- helpers ---
 
     private static Message readMessage(BufferedReader in) throws IOException {
         String line = in.readLine();
@@ -97,6 +101,7 @@ public class ChatClient {
             case BROADCAST, PRIVATE_DELIVERY ->
                     System.out.println("[" + msg.sender() + "] " + msg.body());
             case SYSTEM  -> System.out.println("*** " + msg.body() + " ***");
+            case USER_LIST -> System.out.println("--- online: " + msg.body() + " ---");
             case ERROR   -> System.out.println("!!! " + msg.body());
             default      -> System.out.println(msg.body());
         }
