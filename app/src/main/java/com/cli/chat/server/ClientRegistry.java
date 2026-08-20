@@ -6,13 +6,17 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.cli.chat.common.Message;
 import com.cli.chat.common.Protocol;
 
 public class ClientRegistry {
 
-    private final Map<String, ClientHandler> byName = new ConcurrentHashMap<>();
+    private static final Logger log = LoggerFactory.getLogger(ClientRegistry.class);
 
+    private final Map<String, ClientHandler> byName = new ConcurrentHashMap<>();
 
     public boolean addIfAbsent(String username, ClientHandler handler) {
         return byName.putIfAbsent(username, handler) == null;
@@ -39,7 +43,8 @@ public class ClientRegistry {
         try {
             line = Protocol.encode(msg);
         } catch (IOException e) {
-            return;             
+            log.warn("dropping unserialisable broadcast from {}", msg.sender(), e);
+            return;
         }
         for (ClientHandler c : byName.values()) {
             if (c != sender) {

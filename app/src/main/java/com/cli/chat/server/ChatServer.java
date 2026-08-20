@@ -6,9 +6,14 @@ import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.cli.chat.common.Message;
 
 public class ChatServer {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatServer.class);
 
     private static final int DEFAULT_PORT = 5000;
 
@@ -32,7 +37,7 @@ public class ChatServer {
         serverSocket = new ServerSocket(requestedPort);
         boundPort = serverSocket.getLocalPort();
         running = true;
-        System.out.println("Server listening on " + boundPort);
+        log.info("server listening on port {}", boundPort);
 
         while (running) {
             try {
@@ -40,6 +45,7 @@ public class ChatServer {
                 pool.execute(new ClientHandler(socket, this));
             } catch (IOException e) {
                 if (running) throw e;
+                log.debug("accept interrupted during shutdown", e);
             }
         }
     }

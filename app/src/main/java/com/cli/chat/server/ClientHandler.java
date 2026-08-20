@@ -6,10 +6,15 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.cli.chat.common.Message;
 import com.cli.chat.common.Protocol;
 
 public class ClientHandler implements Runnable {
+
+    private static final Logger log = LoggerFactory.getLogger(ClientHandler.class);
 
     private final Socket socket;
     private final ChatServer server;
@@ -29,7 +34,8 @@ public class ClientHandler implements Runnable {
                 new InputStreamReader(socket.getInputStream()))) {
             out = new PrintWriter(socket.getOutputStream(), true);
 
-            if (!register(in, registry)) return;   // client left before claiming a name
+            if (!register(in, registry)) return;
+            log.info("{} joined, {} online", name, registry.size());
             registry.broadcast(Message.system(name + " joined"), this);
 
             String line;
@@ -53,12 +59,11 @@ public class ClientHandler implements Runnable {
                 }
             }
         } catch (IOException e) {
-            // client dropped
+            log.debug("connection to {} dropped", name, e);
         } finally {
             close(registry);
         }
     }
-
 
     private boolean register(BufferedReader in, ClientRegistry registry) throws IOException {
         send(Message.system("Enter your name:"));
@@ -79,9 +84,14 @@ public class ClientHandler implements Runnable {
     private void close(ClientRegistry registry) {
         if (registered) {
             registry.remove(name, this);
+            log.info("{} left, {} online", name, registry.size());
             registry.broadcast(Message.system(name + " left"), this);
         }
-        try { socket.close(); } catch (IOException ignored) {}
+        try {
+            socket.close();
+        } catch (IOException e) {
+            log.debug("failed to close socket for {}", name, e);
+        }
     }
 
     String getUsername() {
