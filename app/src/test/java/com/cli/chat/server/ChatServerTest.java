@@ -6,6 +6,15 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -200,6 +209,58 @@ class ChatServerTest {
             Message join = alice.receive();
             assertEquals(MessageType.SYSTEM, join.type());
             assertEquals("bob joined", join.body(), "only the retry should be announced");
+        }
+    }
+
+    @Test
+    void twoClientsRacingTheSameUsernameLeaveExactlyOneWinner() throws Exception {
+        final int racers = 8;
+
+        try (TestClient observer = connect("observer")) {
+            CyclicBarrier lineUp = new CyclicBarrier(racers);
+            ExecutorService pool = Executors.newFixedThreadPool(racers);
+            List<TestClient> connected = Collections.synchronizedList(new ArrayList<>());
+
+            try {
+                List<Future<Message>> outcomes = new ArrayList<>();
+                for (int i = 0; i < racers; i++) {
+                    // null == the server stayed silent, i.e. the name was accepted
+                    Callable<Message> racer = () -> {
+                        TestClient c = new TestClient(server.getPort());
+                        connected.add(c);
+                        c.in.readLine();                 // name prompt
+                        lineUp.await();                  // fire the claims together
+                        c.out.println("racer");
+                        try {
+                            return c.receive();
+                        } catch (SocketTimeoutException accepted) {
+                            return null;
+                        }
+                    };
+                    outcomes.add(pool.submit(racer));
+                }
+
+                int winners = 0;
+                for (Future<Message> outcome : outcomes) {
+                    Message reply = outcome.get(15, TimeUnit.SECONDS);
+                    if (reply == null) {
+                        winners++;
+                    } else {
+                        assertEquals(MessageType.ERROR, reply.type(), "losers must be told the name is taken");
+                        assertTrue(reply.body().contains("racer"), "error should name the rejected username");
+                    }
+                }
+                assertEquals(1, winners, "exactly one client may hold a username");
+
+                Message join = observer.receive();
+                assertEquals(MessageType.SYSTEM, join.type());
+                assertEquals("racer joined", join.body());
+                assertThrows(SocketTimeoutException.class, observer.in::readLine,
+                        "only the winner of the race may be announced");
+            } finally {
+                pool.shutdownNow();
+                connected.forEach(TestClient::close);
+            }
         }
     }
 
