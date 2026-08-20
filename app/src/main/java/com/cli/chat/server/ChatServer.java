@@ -57,7 +57,7 @@ public class ChatServer {
                 serverSocket.close();   
             }
         } catch (IOException e) {
-            log.warn("failed to close the server socket", e);
+            log.error("failed to close the server socket", e);
         }
         pool.shutdown();
     }

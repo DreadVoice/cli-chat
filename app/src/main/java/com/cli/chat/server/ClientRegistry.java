@@ -43,7 +43,7 @@ public class ClientRegistry {
         try {
             line = Protocol.encode(msg);
         } catch (ProtocolException e) {
-            log.warn("dropping unserialisable broadcast from {}", msg.sender(), e);
+            log.error("dropping unserialisable broadcast from {}", msg.sender(), e);
             return;
         }
         for (ClientHandler c : byName.values()) {

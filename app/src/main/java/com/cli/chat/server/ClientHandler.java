@@ -45,10 +45,12 @@ public class ClientHandler implements Runnable {
                 try {
                     msg = Protocol.decode(line);
                 } catch (ProtocolException e) {
+                    log.warn("{} sent an unparsable line: {}", name, e.getMessage());
                     send(Message.error("malformed message: " + e.getMessage()));
                     continue;
                 }
                 if (msg.type() == null) {
+                    log.warn("{} sent a message with no usable type", name);
                     send(Message.error("malformed message: missing or unknown type"));
                     continue;
                 }
@@ -56,11 +58,14 @@ public class ClientHandler implements Runnable {
                     case CHAT -> registry.broadcast(Message.broadcast(name, msg.body()), this);
                     case USER_LIST -> send(Message.userList(registry.onlineUsers()));
                     case QUIT -> { return; }
-                    default   -> send(Message.error("unexpected type: " + msg.type()));
+                    default   -> {
+                        log.warn("{} sent an unexpected type: {}", name, msg.type());
+                        send(Message.error("unexpected type: " + msg.type()));
+                    }
                 }
             }
         } catch (IOException e) {
-            log.debug("connection to {} dropped", name, e);
+            log.warn("connection to {} dropped: {}", name, e.getMessage());
         } finally {
             close(registry);
         }
@@ -91,7 +96,7 @@ public class ClientHandler implements Runnable {
         try {
             socket.close();
         } catch (IOException e) {
-            log.debug("failed to close socket for {}", name, e);
+            log.warn("failed to close socket for {}: {}", name, e.getMessage());
         }
     }
 
@@ -104,7 +109,7 @@ public class ClientHandler implements Runnable {
         try {
             sendRaw(Protocol.encode(msg));
         } catch (ProtocolException e) {
-            
+            log.error("dropping unserialisable message to {}", name, e);
         }
     }
 
