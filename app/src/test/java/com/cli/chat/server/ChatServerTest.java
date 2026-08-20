@@ -15,19 +15,28 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.cli.chat.common.Message;
 import com.cli.chat.common.MessageType;
 import com.cli.chat.common.Protocol;
+import com.cli.chat.common.exception.ProtocolException;
 
 class ChatServerTest {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatServerTest.class);
+
+    private final AtomicReference<IOException> startFailure = new AtomicReference<>();
 
     private ChatServer server;
     private Thread serverThread;
@@ -38,8 +47,8 @@ class ChatServerTest {
         serverThread = new Thread(() -> {
             try {
                 server.start();
-            } catch (IOException ignored) {
-
+            } catch (IOException e) {
+                startFailure.set(e);
             }
         });
         serverThread.setDaemon(true);
@@ -49,6 +58,7 @@ class ChatServerTest {
         while (server.getPort() == 0 && System.currentTimeMillis() < deadline) {
             Thread.sleep(10);
         }
+        assertNull(startFailure.get(), "server thread failed to start");
         assertTrue(server.getPort() > 0, "server failed to bind");
     }
 
@@ -325,17 +335,21 @@ class ChatServerTest {
             out = new PrintWriter(socket.getOutputStream(), true);
         }
 
-        void send(Message msg) throws IOException {
+        void send(Message msg) throws ProtocolException {
             out.println(Protocol.encode(msg));
         }
 
-        Message receive() throws IOException {
+        Message receive() throws IOException, ProtocolException {
             return Protocol.decode(in.readLine());
         }
 
         @Override
         public void close() {
-            try { socket.close(); } catch (IOException ignored) { }
+            try {
+                socket.close();
+            } catch (IOException e) {
+                log.warn("failed to close test client socket", e);
+            }
         }
     }
 }

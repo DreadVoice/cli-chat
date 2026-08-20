@@ -6,11 +6,17 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.cli.chat.common.Message;
 import com.cli.chat.common.MessageType;
 import com.cli.chat.common.Protocol;
+import com.cli.chat.common.exception.ProtocolException;
 
 public class ChatClient {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatClient.class);
 
     private static final String DEFAULT_HOST = "localhost";
     private static final int DEFAULT_PORT = 5000;
@@ -54,6 +60,7 @@ public class ChatClient {
                 render(msg);
             }
         } catch (IOException e) {
+            log.debug("read loop ended", e);
             System.out.println("Disconnected.");
         }
     }
@@ -77,13 +84,13 @@ public class ChatClient {
         }
     }
 
-
     private static Message readMessage(BufferedReader in) throws IOException {
         String line = in.readLine();
         if (line == null) return null;
         try {
             return Protocol.decode(line);
-        } catch (IOException e) {
+        } catch (ProtocolException e) {
+            log.debug("treating unparsable line as plain text: {}", line, e);
             return Message.system(line);
         }
     }
@@ -91,7 +98,7 @@ public class ChatClient {
     private static String encode(Message msg) {
         try {
             return Protocol.encode(msg);
-        } catch (IOException e) {
+        } catch (ProtocolException e) {
             throw new RuntimeException("failed to encode outgoing message", e);
         }
     }

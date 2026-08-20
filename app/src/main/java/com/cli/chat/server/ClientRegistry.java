@@ -1,6 +1,5 @@
 package com.cli.chat.server;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -11,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import com.cli.chat.common.Message;
 import com.cli.chat.common.Protocol;
+import com.cli.chat.common.exception.ProtocolException;
 
 public class ClientRegistry {
 
@@ -42,7 +42,7 @@ public class ClientRegistry {
         String line;
         try {
             line = Protocol.encode(msg);
-        } catch (IOException e) {
+        } catch (ProtocolException e) {
             log.warn("dropping unserialisable broadcast from {}", msg.sender(), e);
             return;
         }

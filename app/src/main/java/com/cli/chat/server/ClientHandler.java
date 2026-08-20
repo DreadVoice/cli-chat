@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import com.cli.chat.common.Message;
 import com.cli.chat.common.Protocol;
+import com.cli.chat.common.exception.ProtocolException;
 
 public class ClientHandler implements Runnable {
 
@@ -43,8 +44,8 @@ public class ClientHandler implements Runnable {
                 Message msg;
                 try {
                     msg = Protocol.decode(line);
-                } catch (IOException e) {
-                    send(Message.error("malformed message: could not parse as JSON"));
+                } catch (ProtocolException e) {
+                    send(Message.error("malformed message: " + e.getMessage()));
                     continue;
                 }
                 if (msg.type() == null) {
@@ -102,7 +103,7 @@ public class ClientHandler implements Runnable {
         if (out == null) return;
         try {
             sendRaw(Protocol.encode(msg));
-        } catch (IOException e) {
+        } catch (ProtocolException e) {
             
         }
     }

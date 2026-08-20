@@ -1,6 +1,6 @@
 package com.cli.chat.common;
 
-import java.io.IOException;
+import com.cli.chat.common.exception.ProtocolException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -14,7 +14,7 @@ class ProtocolTest {
 
     @Test
     @DisplayName("A typical chat message survives encode -> decode unchanged")
-    void roundTripsChatMessage() throws IOException {
+    void roundTripsChatMessage() throws ProtocolException {
         Message original = new Message(
                 MessageType.CHAT, "alice", null, "hello", 1706000000000L);
 
@@ -25,7 +25,7 @@ class ProtocolTest {
 
     @Test
     @DisplayName("A private message with a target survives the round trip")
-    void roundTripsPrivateMessage() throws IOException {
+    void roundTripsPrivateMessage() throws ProtocolException {
         Message original = new Message(
                 MessageType.PRIVATE, "alice", "bob", "psst", 1706000000000L);
 
@@ -38,7 +38,7 @@ class ProtocolTest {
     @ParameterizedTest
     @EnumSource(MessageType.class)
     @DisplayName("Every MessageType round-trips")
-    void roundTripsEveryType(MessageType type) throws IOException {
+    void roundTripsEveryType(MessageType type) throws ProtocolException {
         Message original = new Message(type, "sender", "target", "body", 42L);
 
         Message result = Protocol.decode(Protocol.encode(original));
@@ -49,7 +49,7 @@ class ProtocolTest {
 
     @Test
     @DisplayName("A null target survives as null, not the string \"null\"")
-    void preservesNullTarget() throws IOException {
+    void preservesNullTarget() throws ProtocolException {
         Message original = new Message(
                 MessageType.BROADCAST, "server", null, "hi all", 1L);
 
@@ -60,7 +60,7 @@ class ProtocolTest {
 
     @Test
     @DisplayName("Special characters in the body don't break framing or content")
-    void preservesSpecialCharactersInBody() throws IOException {
+    void preservesSpecialCharactersInBody() throws ProtocolException {
         String tricky = "line one\nline two\ttabbed \"quoted\" {\"json\":true} \\backslash";
         Message original = new Message(
                 MessageType.CHAT, "alice", null, tricky, 1L);
@@ -75,6 +75,6 @@ class ProtocolTest {
     @Test
     @DisplayName("Malformed JSON is rejected, not silently accepted")
     void rejectsMalformedJson() {
-        assertThrows(IOException.class, () -> Protocol.decode("{not valid json"));
+        assertThrows(ProtocolException.class, () -> Protocol.decode("{not valid json"));
     }
 }
