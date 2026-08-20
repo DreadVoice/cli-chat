@@ -24,10 +24,12 @@ public class ChatServer {
     private static final int DEFAULT_PORT = 5000;
     private static final String DEFAULT_DATABASE = "chat.db";
     private static final long POOL_TIMEOUT_SECONDS = 5;
+    private static final int CACHE_SIZE = 100;
 
     private final int requestedPort;
     private final MessageWriter writer;
     private final MessageRepository history;
+    private final RecentMessages recent = new RecentMessages(CACHE_SIZE);
     private final ClientRegistry registry = new ClientRegistry();
     private final ExecutorService pool = Executors.newCachedThreadPool();
 
@@ -57,11 +59,16 @@ public class ChatServer {
         return history;
     }
 
+    RecentMessages recent() {
+        return recent;
+    }
+
     ClientRegistry registry() {  
         return registry;
     }
 
     public void start() throws IOException {
+        warmCache();
         serverSocket = new ServerSocket(requestedPort);
         boundPort = serverSocket.getLocalPort();
         running = true;
@@ -75,6 +82,18 @@ public class ChatServer {
                 if (running) throw e;
                 log.debug("accept interrupted during shutdown", e);
             }
+        }
+    }
+
+    private void warmCache() {
+        if (history == null) {
+            return;
+        }
+        try {
+            recent.addAll(history.recent(recent.capacity()));
+            log.info("recent message cache warmed with {} messages", recent.size());
+        } catch (StorageException e) {
+            log.error("could not warm the recent message cache", e);
         }
     }
 

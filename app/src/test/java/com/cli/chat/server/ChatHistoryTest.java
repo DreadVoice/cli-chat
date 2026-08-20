@@ -177,6 +177,50 @@ class ChatHistoryTest {
         }
     }
 
+    @Test
+    void aRestartedServerReplaysWhatWasAlreadyStored() throws Exception {
+        messages.saveAll(List.of(
+                new Message(MessageType.BROADCAST, "alice", null, "from before", 1000L),
+                new Message(MessageType.BROADCAST, "bob", null, "also before", 2000L)));
+
+        ChatServer restarted = new ChatServer(0, writer, messages);
+        Thread thread = new Thread(() -> {
+            try {
+                restarted.start();
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+        thread.setDaemon(true);
+        thread.start();
+
+        long deadline = System.currentTimeMillis() + 2000;
+        while (restarted.getPort() == 0 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+
+        try (TestClient carol = new TestClient(restarted.getPort())) {
+            carol.in.readLine();
+            carol.out.println("carol");
+
+            assertEquals("last 2 messages", carol.receive().body());
+            assertEquals(List.of("from before", "also before"),
+                    List.of(carol.receive().body(), carol.receive().body()));
+        } finally {
+            restarted.stop();
+        }
+    }
+
+    @Test
+    void historyComesFromTheCacheNotTheDatabase() throws Exception {
+        messages.save(new Message(MessageType.BROADCAST, "ghost", null, "written behind the cache", 9000L));
+
+        try (TestClient alice = connect("alice")) {
+            assertThrows(SocketTimeoutException.class, alice.in::readLine,
+                    "rows added after start-up are not visible until the cache sees them");
+        }
+    }
+
     private static class TestClient implements AutoCloseable {
         final Socket socket;
         final BufferedReader in;

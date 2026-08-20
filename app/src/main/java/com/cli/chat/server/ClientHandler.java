@@ -13,8 +13,6 @@ import org.slf4j.LoggerFactory;
 import com.cli.chat.common.Message;
 import com.cli.chat.common.Protocol;
 import com.cli.chat.common.exception.ProtocolException;
-import com.cli.chat.common.exception.StorageException;
-import com.cli.chat.db.MessageRepository;
 import com.cli.chat.db.MessageWriter;
 
 public class ClientHandler implements Runnable {
@@ -99,25 +97,18 @@ public class ClientHandler implements Runnable {
     }
 
     private void sendHistory() {
-        MessageRepository history = server.history();
-        if (history == null) {
+        List<Message> recent = server.recent().last(HISTORY_SIZE);
+        if (recent.isEmpty()) {
             return;
         }
-        try {
-            List<Message> recent = history.recent(HISTORY_SIZE);
-            if (recent.isEmpty()) {
-                return;
-            }
-            send(Message.system("last " + recent.size() + " messages"));
-            for (Message message : recent) {
-                send(message);
-            }
-        } catch (StorageException e) {
-            log.error("could not read the history for {}", name, e);
+        send(Message.system("last " + recent.size() + " messages"));
+        for (Message message : recent) {
+            send(message);
         }
     }
 
     private void persist(Message message) {
+        server.recent().add(message);
         MessageWriter writer = server.writer();
         if (writer != null) {
             writer.submit(message);
