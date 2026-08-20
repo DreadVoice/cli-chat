@@ -5,8 +5,6 @@ CREATE TABLE IF NOT EXISTS users (
     created_at    INTEGER NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users (username);
-
 CREATE TABLE IF NOT EXISTS messages (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     type      TEXT    NOT NULL,
@@ -16,5 +14,12 @@ CREATE TABLE IF NOT EXISTS messages (
     timestamp INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages (timestamp);
-CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages (recipient, timestamp);
+DROP INDEX IF EXISTS idx_users_username;
+DROP INDEX IF EXISTS idx_messages_timestamp;
+DROP INDEX IF EXISTS idx_messages_recipient;
+
+CREATE INDEX IF NOT EXISTS idx_messages_recent
+    ON messages (timestamp DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_messages_recipient_recent
+    ON messages (recipient, timestamp DESC, id DESC);
