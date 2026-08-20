@@ -65,7 +65,7 @@ public class ChatServer {
     }
 
     void remove(ClientHandler c) {
-        registry.remove(c.getUsername());
+        registry.remove(c.getUsername(), c);
     }
 
     public static void main(String[] args) throws IOException {

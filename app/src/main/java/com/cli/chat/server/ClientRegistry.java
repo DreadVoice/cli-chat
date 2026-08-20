@@ -11,12 +11,20 @@ public class ClientRegistry {
 
     private final Map<String, ClientHandler> byName = new ConcurrentHashMap<>();
 
-    public void add(String username, ClientHandler handler) {
-        byName.put(username, handler);
+    /**
+     * Claims {@code username} for {@code handler} if no one holds it yet.
+     * The check and the insert are a single atomic operation, so two clients
+     * racing on the same name cannot both succeed.
+     *
+     * @return true if the name was free and is now taken by this handler
+     */
+    public boolean addIfAbsent(String username, ClientHandler handler) {
+        return byName.putIfAbsent(username, handler) == null;
     }
 
-    public void remove(String username) {
-        byName.remove(username);
+    /** Releases {@code username}, but only if {@code handler} is the current holder. */
+    public boolean remove(String username, ClientHandler handler) {
+        return byName.remove(username, handler);
     }
 
     public Optional<ClientHandler> find(String username) {

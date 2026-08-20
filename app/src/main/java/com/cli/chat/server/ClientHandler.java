@@ -15,6 +15,7 @@ public class ClientHandler implements Runnable {
     private final ChatServer server;
     private PrintWriter out;
     private String name = "anon";
+    private boolean registered;
 
     ClientHandler(Socket socket, ChatServer server) {
         this.socket = socket;
@@ -28,11 +29,7 @@ public class ClientHandler implements Runnable {
                 new InputStreamReader(socket.getInputStream()))) {
             out = new PrintWriter(socket.getOutputStream(), true);
 
-            send(Message.system("Enter your name:"));
-            String first = in.readLine();
-            name = (first == null || first.isBlank()) ? "anon" : first;
-
-            registry.add(name, this);       // register once the name is known
+            if (!register(in, registry)) return;   // client left before claiming a name
             registry.broadcast(Message.system(name + " joined"), this);
 
             String line;
@@ -61,9 +58,34 @@ public class ClientHandler implements Runnable {
         }
     }
 
+    /**
+     * Prompts for a name until the client claims a free one or disconnects.
+     * The claim itself is atomic, so of two clients racing on the same name
+     * exactly one wins and the other is asked again.
+     *
+     * @return true if this handler now owns {@link #name} in the registry
+     */
+    private boolean register(BufferedReader in, ClientRegistry registry) throws IOException {
+        send(Message.system("Enter your name:"));
+        String line;
+        while ((line = in.readLine()) != null) {
+            String candidate = line.isBlank() ? "anon" : line;
+            if (registry.addIfAbsent(candidate, this)) {
+                name = candidate;
+                registered = true;
+                return true;
+            }
+            send(Message.error("username '" + candidate + "' is already taken"));
+            send(Message.system("Enter your name:"));
+        }
+        return false;
+    }
+
     private void close(ClientRegistry registry) {
-        registry.remove(name);
-        registry.broadcast(Message.system(name + " left"), this);
+        if (registered) {
+            registry.remove(name, this);
+            registry.broadcast(Message.system(name + " left"), this);
+        }
         try { socket.close(); } catch (IOException ignored) {}
     }
 

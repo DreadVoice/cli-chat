@@ -166,7 +166,6 @@ class ChatServerTest {
     @Test
     void unexpectedTypeIsRejectedWithAnError() throws Exception {
         try (TestClient alice = connect("alice")) {
-            // BROADCAST is a server-to-client type; the server rejects it from a client
             alice.send(new Message(MessageType.BROADCAST, "alice", null, "hello", 0L));
 
             Message reply = alice.receive();
@@ -180,6 +179,27 @@ class ChatServerTest {
         try (TestClient alice = connect("alice");
              TestClient bob = connect("bob")) {
             alice.receive();
+        }
+    }
+
+    @Test
+    void duplicateUsernameIsRejectedAndTheClientCanRetry() throws Exception {
+        try (TestClient alice = connect("alice");
+             TestClient impostor = new TestClient(server.getPort())) {
+
+            impostor.in.readLine();              // name prompt
+            impostor.out.println("alice");       // already taken
+
+            Message reply = impostor.receive();
+            assertEquals(MessageType.ERROR, reply.type());
+            assertTrue(reply.body().contains("alice"), "error should name the rejected username");
+
+            impostor.in.readLine();              // prompted again
+            impostor.out.println("bob");
+
+            Message join = alice.receive();
+            assertEquals(MessageType.SYSTEM, join.type());
+            assertEquals("bob joined", join.body(), "only the retry should be announced");
         }
     }
 
