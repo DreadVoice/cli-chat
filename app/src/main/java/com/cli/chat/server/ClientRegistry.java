@@ -38,6 +38,12 @@ public class ClientRegistry {
         return byName.size();
     }
 
+    public void disconnectAll() {
+        for (ClientHandler c : byName.values()) {
+            c.disconnect();
+        }
+    }
+
     public void broadcast(Message msg, ClientHandler sender) {
         String line;
         try {

@@ -5,7 +5,7 @@ import java.util.UUID;
 
 import com.cli.chat.common.exception.StorageException;
 
-class InMemoryDatabase implements AutoCloseable {
+public class InMemoryDatabase implements AutoCloseable {
 
     private final Database database;
     private final Connection keepAlive;
@@ -15,14 +15,14 @@ class InMemoryDatabase implements AutoCloseable {
         this.keepAlive = keepAlive;
     }
 
-    static InMemoryDatabase create() throws StorageException {
+    public static InMemoryDatabase create() throws StorageException {
         Database database = Database.inMemory("chat-" + UUID.randomUUID());
         Connection keepAlive = database.open();
         database.initialise();
         return new InMemoryDatabase(database, keepAlive);
     }
 
-    Database database() {
+    public Database database() {
         return database;
     }
 

@@ -104,6 +104,14 @@ public class ClientHandler implements Runnable {
         return name;
     }
 
+    void disconnect() {
+        try {
+            socket.close();
+        } catch (IOException e) {
+            log.warn("failed to close socket for {}: {}", name, e.getMessage());
+        }
+    }
+
     void send(Message msg) {
         if (out == null) return;
         try {
