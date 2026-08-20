@@ -96,9 +96,15 @@ public class ClientHandler implements Runnable {
     void send(Message msg) {
         if (out == null) return;
         try {
-            out.println(Protocol.encode(msg));
+            sendRaw(Protocol.encode(msg));
         } catch (IOException e) {
             // message could not be serialised; drop it
         }
+    }
+
+    /** Writes an already-encoded line, so a broadcast encodes once for all recipients. */
+    void sendRaw(String line) {
+        if (out == null) return;
+        out.println(line);
     }
 }
