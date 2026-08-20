@@ -90,7 +90,7 @@ public class ChatClient {
         try {
             return Protocol.decode(line);
         } catch (ProtocolException e) {
-            log.error("server sent an unparsable line: {}", line, e);
+            log.error("server sent an unparsable line of {} chars: {}", line.length(), e.getMessage());
             return Message.system(line);
         }
     }

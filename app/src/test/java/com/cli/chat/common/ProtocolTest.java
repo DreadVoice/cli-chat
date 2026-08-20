@@ -3,6 +3,7 @@ package com.cli.chat.common;
 import com.cli.chat.common.exception.ProtocolException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import org.junit.jupiter.api.DisplayName;
@@ -76,5 +77,19 @@ class ProtocolTest {
     @DisplayName("Malformed JSON is rejected, not silently accepted")
     void rejectsMalformedJson() {
         assertThrows(ProtocolException.class, () -> Protocol.decode("{not valid json"));
+    }
+
+    @Test
+    @DisplayName("A decode failure does not echo the payload it failed on")
+    void decodeFailureKeepsThePayloadOutOfTheException() {
+        String secret = "my-private-message";
+
+        ProtocolException e = assertThrows(ProtocolException.class,
+                () -> Protocol.decode("{\"type\":\"CHAT\",\"body\":\"" + secret + "\""));
+
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            assertFalse(String.valueOf(t.getMessage()).contains(secret),
+                    "exception messages must not carry message bodies into the logs");
+        }
     }
 }
