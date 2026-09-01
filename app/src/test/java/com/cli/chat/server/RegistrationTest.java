@@ -1,6 +1,7 @@
 package com.cli.chat.server;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -116,6 +117,53 @@ class RegistrationTest {
             impostor.send(new Message(MessageType.USER_LIST, "alice", null, null, 0L));
             assertEquals(MessageType.ERROR, impostor.receive().type(),
                     "a refused registration must not authenticate the client");
+        }
+    }
+
+    @Test
+    void aDuplicateRegisterLeavesTheOriginalCredentialsIntact() throws Exception {
+        try (TestClient alice = connect()) {
+            alice.send(register("alice", PASSWORD));
+            assertEquals(MessageType.LOGIN_OK, alice.receive().type());
+        }
+        String stored = users.findByUsername("alice").orElseThrow().passwordHash();
+
+        try (TestClient impostor = connect()) {
+            impostor.send(register("alice", "another"));
+            assertEquals(MessageType.LOGIN_FAIL, impostor.receive().type());
+        }
+
+        User after = users.findByUsername("alice").orElseThrow();
+        assertEquals(stored, after.passwordHash(), "a refused registration must not touch the account");
+        assertTrue(PasswordHasher.matches(PASSWORD, after.passwordHash()));
+        assertFalse(PasswordHasher.matches("another", after.passwordHash()));
+    }
+
+    @Test
+    void registeringANameSomeoneIsUsingOnlineIsRefused() throws Exception {
+        try (TestClient squatter = connect();
+             TestClient alice = connect()) {
+
+            squatter.out.println("alice");
+
+            alice.send(register("alice", PASSWORD));
+
+            Message reply = alice.receive();
+            assertEquals(MessageType.LOGIN_FAIL, reply.type());
+            assertTrue(reply.body().contains("online"), "the failure should say the name is in use");
+        }
+    }
+
+    @Test
+    void usernamesThatDifferOnlyInCaseAreSeparateAccounts() throws Exception {
+        try (TestClient lower = connect();
+             TestClient upper = connect()) {
+
+            lower.send(register("alice", PASSWORD));
+            assertEquals(MessageType.LOGIN_OK, lower.receive().type());
+
+            upper.send(register("Alice", PASSWORD));
+            assertEquals(MessageType.LOGIN_OK, upper.receive().type(), "usernames are case-sensitive");
         }
     }
 

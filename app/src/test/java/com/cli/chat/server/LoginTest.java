@@ -141,6 +141,59 @@ class LoginTest {
     }
 
     @Test
+    void aWrongPasswordDoesNotPutTheUserOnline() throws Exception {
+        try (TestClient bob = connect();
+             TestClient attacker = connect()) {
+
+            bob.out.println("bob");
+
+            attacker.send(login("alice", "guessing"));
+            assertEquals(MessageType.LOGIN_FAIL, attacker.receive().type());
+
+            bob.send(new Message(MessageType.USER_LIST, "bob", null, null, 0L));
+            assertEquals("bob", bob.receive().body(), "a refused login must not reach the roster");
+        }
+    }
+
+    @Test
+    void aWrongPasswordLeavesTheStoredHashIntact() throws Exception {
+        String before = users.findByUsername("alice").orElseThrow().passwordHash();
+
+        try (TestClient alice = connect()) {
+            alice.send(login("alice", "guessing"));
+            assertEquals(MessageType.LOGIN_FAIL, alice.receive().type());
+
+            alice.send(login("alice", PASSWORD));
+            assertEquals(MessageType.LOGIN_OK, alice.receive().type(), "the account should still work");
+        }
+
+        assertEquals(before, users.findByUsername("alice").orElseThrow().passwordHash());
+    }
+
+    @Test
+    void passwordsAreCaseSensitive() throws Exception {
+        try (TestClient alice = connect()) {
+            alice.send(login("alice", PASSWORD.toUpperCase()));
+
+            assertEquals(MessageType.LOGIN_FAIL, alice.receive().type());
+        }
+    }
+
+    @Test
+    void chatAfterAFailedLoginIsStillRejected() throws Exception {
+        try (TestClient alice = connect()) {
+            alice.send(login("alice", "guessing"));
+            assertEquals(MessageType.LOGIN_FAIL, alice.receive().type());
+
+            alice.send(new Message(MessageType.CHAT, "alice", null, "let me in", 0L));
+
+            Message reply = alice.receive();
+            assertEquals(MessageType.ERROR, reply.type());
+            assertTrue(reply.body().contains("CHAT"), "error should name the rejected type");
+        }
+    }
+
+    @Test
     void aThirdFailedLoginClosesTheConnection() throws Exception {
         try (TestClient attacker = connect()) {
             for (int strike = 0; strike < 3; strike++) {
