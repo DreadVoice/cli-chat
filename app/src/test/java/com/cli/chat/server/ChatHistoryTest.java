@@ -141,6 +141,22 @@ class ChatHistoryTest {
     }
 
     @Test
+    void chatBeforeAuthenticationIsNeitherBroadcastNorStored() throws Exception {
+        try (TestClient alice = connect("alice");
+             TestClient impostor = new TestClient(server.getPort())) {
+
+            impostor.in.readLine();
+            impostor.send(chat("i skipped the handshake"));
+
+            assertEquals(MessageType.ERROR, impostor.receive().type());
+            assertTrue(writer.awaitEmpty(1000), "the writer should have drained");
+            assertTrue(messages.recent(10).isEmpty(), "an unauthenticated line must never be stored");
+            assertThrows(SocketTimeoutException.class, alice.in::readLine,
+                    "an unauthenticated line must not reach other clients");
+        }
+    }
+
+    @Test
     void anEmptyHistorySendsNothing() throws Exception {
         try (TestClient alice = connect("alice")) {
             assertThrows(SocketTimeoutException.class, alice.in::readLine,
