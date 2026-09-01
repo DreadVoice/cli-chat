@@ -192,6 +192,40 @@ class ChatServerTest {
     }
 
     @Test
+    void chatBeforeAuthenticationIsRejectedWithoutClaimingAName() throws Exception {
+        try (TestClient alice = connect("alice");
+             TestClient impatient = new TestClient(server.getPort())) {
+
+            impatient.in.readLine();
+            impatient.send(chat("let me in"));
+
+            Message reply = impatient.receive();
+            assertEquals(MessageType.ERROR, reply.type());
+            assertTrue(reply.body().contains("CHAT"), "error should name the rejected type");
+
+            impatient.in.readLine();
+            impatient.out.println("bob");
+
+            Message join = alice.receive();
+            assertEquals(MessageType.SYSTEM, join.type());
+            assertEquals("bob joined", join.body(), "only a name line may register a client");
+        }
+    }
+
+    @Test
+    void rosterRequestBeforeAuthenticationIsRejected() throws Exception {
+        try (TestClient impatient = new TestClient(server.getPort())) {
+            impatient.in.readLine();
+
+            impatient.send(new Message(MessageType.USER_LIST, "nobody", null, null, 0L));
+
+            Message reply = impatient.receive();
+            assertEquals(MessageType.ERROR, reply.type());
+            assertTrue(reply.body().contains("USER_LIST"), "error should name the rejected type");
+        }
+    }
+
+    @Test
     void registryTracksOnlineUsers() throws Exception {
         try (TestClient alice = connect("alice");
              TestClient bob = connect("bob")) {

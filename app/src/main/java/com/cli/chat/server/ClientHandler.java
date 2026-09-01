@@ -5,12 +5,15 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.cli.chat.common.Message;
+import com.cli.chat.common.MessageType;
 import com.cli.chat.common.Protocol;
 import com.cli.chat.common.exception.ProtocolException;
 import com.cli.chat.db.MessageWriter;
@@ -21,6 +24,8 @@ public class ClientHandler implements Runnable {
 
     private static final int HISTORY_SIZE = 20;
     private static final String NAME_PROMPT = "Enter your name:";
+    private static final Set<MessageType> AUTH_TYPES =
+            EnumSet.of(MessageType.LOGIN, MessageType.REGISTER);
 
     private enum State { AWAITING_AUTH, AUTHENTICATED, CLOSED }
 
@@ -58,6 +63,9 @@ public class ClientHandler implements Runnable {
     }
 
     private void authenticate(String line, ClientRegistry registry) {
+        if (rejectedBeforeAuth(line)) {
+            return;
+        }
         String candidate = line.isBlank() ? "anon" : line;
         if (!registry.addIfAbsent(candidate, this)) {
             send(Message.error("username '" + candidate + "' is already taken"));
@@ -69,6 +77,22 @@ public class ClientHandler implements Runnable {
         log.info("{} joined, {} online", name, registry.size());
         sendHistory();
         registry.broadcast(Message.system(name + " joined"), this);
+    }
+
+    private boolean rejectedBeforeAuth(String line) {
+        MessageType type;
+        try {
+            type = Protocol.decode(line).type();
+        } catch (ProtocolException e) {
+            return false;
+        }
+        if (type == null || AUTH_TYPES.contains(type)) {
+            return false;
+        }
+        log.warn("unauthenticated client sent {}", type);
+        send(Message.error("not authenticated: send your name before " + type));
+        send(Message.system(NAME_PROMPT));
+        return true;
     }
 
     private void handle(String line, ClientRegistry registry) {
