@@ -28,6 +28,7 @@ public class ClientHandler implements Runnable {
     private static final Logger log = LoggerFactory.getLogger(ClientHandler.class);
 
     private static final int HISTORY_SIZE = 20;
+    private static final int MAX_LOGIN_ATTEMPTS = 3;
     private static final String NAME_PROMPT = "Enter your name:";
     private static final Set<MessageType> AUTH_TYPES =
             EnumSet.of(MessageType.LOGIN, MessageType.REGISTER);
@@ -39,6 +40,7 @@ public class ClientHandler implements Runnable {
     private PrintWriter out;
     private String name = "anon";
     private State state = State.AWAITING_AUTH;
+    private int failedLogins;
 
     ClientHandler(Socket socket, ChatServer server) {
         this.socket = socket;
@@ -129,7 +131,7 @@ public class ClientHandler implements Runnable {
         UserRepository users = server.users();
         if (users == null) {
             log.error("{} tried to log in but no user store is configured", username);
-            send(Message.loginFail("login is unavailable"));
+            failLogin("login is unavailable");
             return;
         }
         Optional<User> user;
@@ -137,20 +139,30 @@ public class ClientHandler implements Runnable {
             user = users.findByUsername(username);
         } catch (StorageException e) {
             log.error("could not look up {}", username, e);
-            send(Message.loginFail("could not log in " + username));
+            failLogin("could not log in " + username);
             return;
         }
         if (user.isEmpty() || !PasswordHasher.matches(password, user.get().passwordHash())) {
             log.warn("login rejected for {}", username);
-            send(Message.loginFail("wrong username or password"));
+            failLogin("wrong username or password");
             return;
         }
         if (!registry.addIfAbsent(username, this)) {
-            send(Message.loginFail("username '" + username + "' is already online"));
+            failLogin("username '" + username + "' is already online");
             return;
         }
         send(Message.loginOk(username));
         enterChat(username, registry);
+    }
+
+    private void failLogin(String reason) {
+        send(Message.loginFail(reason));
+        failedLogins++;
+        if (failedLogins >= MAX_LOGIN_ATTEMPTS) {
+            log.warn("closing a connection after {} failed logins", failedLogins);
+            send(Message.error("too many failed logins"));
+            state = State.CLOSED;
+        }
     }
 
     private void claimName(String candidate, ClientRegistry registry) {
