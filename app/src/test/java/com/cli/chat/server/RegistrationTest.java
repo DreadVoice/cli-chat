@@ -145,12 +145,33 @@ class RegistrationTest {
              TestClient alice = connect()) {
 
             squatter.out.println("alice");
+            squatter.send(new Message(MessageType.USER_LIST, "alice", null, null, 0L));
+            assertEquals("alice", squatter.receive().body(), "the name should be claimed by now");
 
             alice.send(register("alice", PASSWORD));
 
             Message reply = alice.receive();
             assertEquals(MessageType.LOGIN_FAIL, reply.type());
             assertTrue(reply.body().contains("online"), "the failure should say the name is in use");
+            assertTrue(users.findByUsername("alice").isEmpty(),
+                    "a refused registration must not leave an account behind");
+        }
+    }
+
+    @Test
+    void aRefusedRegistrationReleasesTheNameAgain() throws Exception {
+        try (TestClient alice = connect()) {
+            alice.send(register("alice", PASSWORD));
+            assertEquals(MessageType.LOGIN_OK, alice.receive().type());
+        }
+
+        try (TestClient returning = connect()) {
+            returning.send(register("alice", PASSWORD));
+            assertEquals(MessageType.LOGIN_FAIL, returning.receive().type());
+
+            returning.send(new Message(MessageType.LOGIN, "alice", null, PASSWORD, 0L));
+            assertEquals(MessageType.LOGIN_OK, returning.receive().type(),
+                    "a refused registration must not keep the name claimed");
         }
     }
 
