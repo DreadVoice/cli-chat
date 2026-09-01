@@ -1,7 +1,6 @@
 package com.cli.chat.server;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.BufferedReader;
@@ -14,18 +13,15 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import at.favre.lib.crypto.bcrypt.BCrypt;
-
 import com.cli.chat.common.Message;
 import com.cli.chat.common.MessageType;
 import com.cli.chat.common.Protocol;
-import com.cli.chat.common.User;
 import com.cli.chat.common.exception.ProtocolException;
 import com.cli.chat.db.InMemoryDatabase;
 import com.cli.chat.db.SqliteUserRepository;
 import com.cli.chat.db.UserRepository;
 
-class RegistrationTest {
+class LoginTest {
 
     private static final String PASSWORD = "s3cret";
 
@@ -37,6 +33,7 @@ class RegistrationTest {
     void startServer() throws Exception {
         database = InMemoryDatabase.create();
         users = new SqliteUserRepository(database.database());
+        users.create("alice", PasswordHasher.hash(PASSWORD));
 
         server = new ChatServer(0, null, null, users);
         Thread thread = new Thread(() -> {
@@ -68,14 +65,14 @@ class RegistrationTest {
         return c;
     }
 
-    private static Message register(String username, String password) {
-        return new Message(MessageType.REGISTER, username, null, password, 0L);
+    private static Message login(String username, String password) {
+        return new Message(MessageType.LOGIN, username, null, password, 0L);
     }
 
     @Test
-    void registeringStoresTheUserAndAuthenticatesTheClient() throws Exception {
+    void theRightPasswordAuthenticatesTheClient() throws Exception {
         try (TestClient alice = connect()) {
-            alice.send(register("alice", PASSWORD));
+            alice.send(login("alice", PASSWORD));
 
             Message reply = alice.receive();
             assertEquals(MessageType.LOGIN_OK, reply.type());
@@ -87,51 +84,63 @@ class RegistrationTest {
     }
 
     @Test
-    void thePasswordIsStoredAsABcryptHash() throws Exception {
+    void theWrongPasswordIsRejectedAndLeavesTheClientUnauthenticated() throws Exception {
         try (TestClient alice = connect()) {
-            alice.send(register("alice", PASSWORD));
-            alice.receive();
-
-            User stored = users.findByUsername("alice").orElseThrow();
-            assertNotEquals(PASSWORD, stored.passwordHash(), "the password must never be stored in the clear");
-            assertTrue(stored.passwordHash().startsWith("$2a$12$"), "the hash should be bcrypt at cost 12");
-            assertTrue(BCrypt.verifyer().verify(PASSWORD.toCharArray(), stored.passwordHash()).verified);
-        }
-    }
-
-    @Test
-    void registeringATakenUsernameIsRefusedAndLeavesTheClientUnauthenticated() throws Exception {
-        try (TestClient alice = connect();
-             TestClient impostor = connect()) {
-
-            alice.send(register("alice", PASSWORD));
-            alice.receive();
-
-            impostor.send(register("alice", "another"));
-
-            Message reply = impostor.receive();
-            assertEquals(MessageType.LOGIN_FAIL, reply.type());
-            assertTrue(reply.body().contains("alice"), "the failure should name the rejected username");
-
-            impostor.send(new Message(MessageType.USER_LIST, "alice", null, null, 0L));
-            assertEquals(MessageType.ERROR, impostor.receive().type(),
-                    "a refused registration must not authenticate the client");
-        }
-    }
-
-    @Test
-    void registeringWithoutAPasswordIsRejected() throws Exception {
-        try (TestClient alice = connect()) {
-            alice.send(register("alice", null));
+            alice.send(login("alice", "guessing"));
 
             Message reply = alice.receive();
-            assertEquals(MessageType.ERROR, reply.type());
-            assertTrue(users.findByUsername("alice").isEmpty(), "nothing should be stored");
+            assertEquals(MessageType.LOGIN_FAIL, reply.type());
+
+            alice.send(new Message(MessageType.USER_LIST, "alice", null, null, 0L));
+            assertEquals(MessageType.ERROR, alice.receive().type(),
+                    "a refused login must not authenticate the client");
         }
     }
 
     @Test
-    void registeringOnAServerWithoutAUserStoreFails() throws Exception {
+    void anUnknownUserIsRefusedWithTheSameReasonAsAWrongPassword() throws Exception {
+        try (TestClient stranger = connect();
+             TestClient alice = connect()) {
+
+            stranger.send(login("nobody", PASSWORD));
+            Message unknown = stranger.receive();
+
+            alice.send(login("alice", "guessing"));
+            Message wrong = alice.receive();
+
+            assertEquals(MessageType.LOGIN_FAIL, unknown.type());
+            assertEquals(wrong.body(), unknown.body(),
+                    "the failure must not reveal whether the username exists");
+        }
+    }
+
+    @Test
+    void loggingInTwiceAsTheSameUserIsRefused() throws Exception {
+        try (TestClient alice = connect();
+             TestClient elsewhere = connect()) {
+
+            alice.send(login("alice", PASSWORD));
+            assertEquals(MessageType.LOGIN_OK, alice.receive().type());
+
+            elsewhere.send(login("alice", PASSWORD));
+
+            Message reply = elsewhere.receive();
+            assertEquals(MessageType.LOGIN_FAIL, reply.type());
+            assertTrue(reply.body().contains("online"), "the failure should say the name is in use");
+        }
+    }
+
+    @Test
+    void loggingInWithoutAPasswordIsRejected() throws Exception {
+        try (TestClient alice = connect()) {
+            alice.send(login("alice", null));
+
+            assertEquals(MessageType.ERROR, alice.receive().type());
+        }
+    }
+
+    @Test
+    void loggingInOnAServerWithoutAUserStoreFails() throws Exception {
         ChatServer plain = new ChatServer(0);
         Thread thread = new Thread(() -> {
             try {
@@ -150,7 +159,7 @@ class RegistrationTest {
 
         try (TestClient alice = new TestClient(plain.getPort())) {
             alice.in.readLine();
-            alice.send(register("alice", PASSWORD));
+            alice.send(login("alice", PASSWORD));
 
             assertEquals(MessageType.LOGIN_FAIL, alice.receive().type());
         } finally {
