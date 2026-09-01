@@ -102,19 +102,21 @@ public class ClientHandler implements Runnable {
             send(Message.loginFail("registration is unavailable"));
             return;
         }
+        if (!registry.addIfAbsent(username, this)) {
+            send(Message.loginFail("username '" + username + "' is already online"));
+            return;
+        }
         try {
             users.create(username, PasswordHasher.hash(password));
         } catch (UsernameTakenException e) {
+            registry.remove(username, this);
             log.warn("registration rejected: {}", e.getMessage());
             send(Message.loginFail(e.getMessage()));
             return;
         } catch (StorageException e) {
+            registry.remove(username, this);
             log.error("could not register {}", username, e);
             send(Message.loginFail("could not register " + username));
-            return;
-        }
-        if (!registry.addIfAbsent(username, this)) {
-            send(Message.loginFail("username '" + username + "' is already online"));
             return;
         }
         send(Message.loginOk(username));
