@@ -20,12 +20,12 @@ public record Message(
         return new Message(MessageType.USER_LIST, "SERVER", null,
                 String.join(", ", List.copyOf(usernames)), System.currentTimeMillis());
     }
-    public static Message loginSuccess(String username) {
-        return new Message(MessageType.LOGIN_SUCCESS, "SERVER", username,
+    public static Message loginOk(String username) {
+        return new Message(MessageType.LOGIN_OK, "SERVER", username,
                 "welcome, " + username, System.currentTimeMillis());
     }
-    public static Message loginFailure(String reason) {
-        return new Message(MessageType.LOGIN_FAILURE, "SERVER", null, reason, System.currentTimeMillis());
+    public static Message loginFail(String reason) {
+        return new Message(MessageType.LOGIN_FAIL, "SERVER", null, reason, System.currentTimeMillis());
     }
     public static Message error(String body) {
         return new Message(MessageType.ERROR, "SERVER", null, body, System.currentTimeMillis());

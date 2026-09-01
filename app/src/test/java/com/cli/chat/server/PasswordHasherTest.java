@@ -36,4 +36,19 @@ class PasswordHasherTest {
         assertTrue(BCrypt.verifyer().verify(PASSWORD.toCharArray(), hash).verified);
         assertFalse(BCrypt.verifyer().verify("wrong horse".toCharArray(), hash).verified);
     }
+
+    @Test
+    void matchesAcceptsThePasswordItHashed() {
+        assertTrue(PasswordHasher.matches(PASSWORD, PasswordHasher.hash(PASSWORD)));
+    }
+
+    @Test
+    void matchesRejectsAnotherPassword() {
+        assertFalse(PasswordHasher.matches("wrong horse", PasswordHasher.hash(PASSWORD)));
+    }
+
+    @Test
+    void matchesRejectsAHashItDidNotProduce() {
+        assertFalse(PasswordHasher.matches(PASSWORD, "not a bcrypt hash"));
+    }
 }

@@ -7,6 +7,7 @@ import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import org.slf4j.Logger;
@@ -15,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import com.cli.chat.common.Message;
 import com.cli.chat.common.MessageType;
 import com.cli.chat.common.Protocol;
+import com.cli.chat.common.User;
 import com.cli.chat.common.exception.ProtocolException;
 import com.cli.chat.common.exception.StorageException;
 import com.cli.chat.common.exception.UsernameTakenException;
@@ -78,6 +80,10 @@ public class ClientHandler implements Runnable {
             register(msg, registry);
             return;
         }
+        if (type == MessageType.LOGIN) {
+            login(msg, registry);
+            return;
+        }
         claimName(line.isBlank() ? "anon" : line, registry);
     }
 
@@ -91,25 +97,59 @@ public class ClientHandler implements Runnable {
         UserRepository users = server.users();
         if (users == null) {
             log.error("{} tried to register but no user store is configured", username);
-            send(Message.loginFailure("registration is unavailable"));
+            send(Message.loginFail("registration is unavailable"));
             return;
         }
         try {
             users.create(username, PasswordHasher.hash(password));
         } catch (UsernameTakenException e) {
             log.warn("registration rejected: {}", e.getMessage());
-            send(Message.loginFailure(e.getMessage()));
+            send(Message.loginFail(e.getMessage()));
             return;
         } catch (StorageException e) {
             log.error("could not register {}", username, e);
-            send(Message.loginFailure("could not register " + username));
+            send(Message.loginFail("could not register " + username));
             return;
         }
         if (!registry.addIfAbsent(username, this)) {
-            send(Message.loginFailure("username '" + username + "' is already online"));
+            send(Message.loginFail("username '" + username + "' is already online"));
             return;
         }
-        send(Message.loginSuccess(username));
+        send(Message.loginOk(username));
+        enterChat(username, registry);
+    }
+
+    private void login(Message msg, ClientRegistry registry) {
+        String username = msg.sender();
+        String password = msg.body();
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+            send(Message.error("login requires a username and a password"));
+            return;
+        }
+        UserRepository users = server.users();
+        if (users == null) {
+            log.error("{} tried to log in but no user store is configured", username);
+            send(Message.loginFail("login is unavailable"));
+            return;
+        }
+        Optional<User> user;
+        try {
+            user = users.findByUsername(username);
+        } catch (StorageException e) {
+            log.error("could not look up {}", username, e);
+            send(Message.loginFail("could not log in " + username));
+            return;
+        }
+        if (user.isEmpty() || !PasswordHasher.matches(password, user.get().passwordHash())) {
+            log.warn("login rejected for {}", username);
+            send(Message.loginFail("wrong username or password"));
+            return;
+        }
+        if (!registry.addIfAbsent(username, this)) {
+            send(Message.loginFail("username '" + username + "' is already online"));
+            return;
+        }
+        send(Message.loginOk(username));
         enterChat(username, registry);
     }
 

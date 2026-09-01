@@ -8,8 +8,8 @@ public enum MessageType {
     COMMAND,
     QUIT,
 
-    LOGIN_SUCCESS,
-    LOGIN_FAILURE,
+    LOGIN_OK,
+    LOGIN_FAIL,
     BROADCAST,
     PRIVATE_DELIVERY,
     SYSTEM,
