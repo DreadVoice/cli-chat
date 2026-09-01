@@ -20,12 +20,15 @@ public class ClientHandler implements Runnable {
     private static final Logger log = LoggerFactory.getLogger(ClientHandler.class);
 
     private static final int HISTORY_SIZE = 20;
+    private static final String NAME_PROMPT = "Enter your name:";
+
+    private enum State { AWAITING_AUTH, AUTHENTICATED, CLOSED }
 
     private final Socket socket;
     private final ChatServer server;
     private PrintWriter out;
     private String name = "anon";
-    private boolean registered;
+    private State state = State.AWAITING_AUTH;
 
     ClientHandler(Socket socket, ChatServer server) {
         this.socket = socket;
@@ -38,39 +41,13 @@ public class ClientHandler implements Runnable {
         try (BufferedReader in = new BufferedReader(
                 new InputStreamReader(socket.getInputStream()))) {
             out = new PrintWriter(socket.getOutputStream(), true);
-
-            if (!register(in, registry)) return;
-            log.info("{} joined, {} online", name, registry.size());
-            sendHistory();
-            registry.broadcast(Message.system(name + " joined"), this);
+            send(Message.system(NAME_PROMPT));
 
             String line;
-            while ((line = in.readLine()) != null) {
-                Message msg;
-                try {
-                    msg = Protocol.decode(line);
-                } catch (ProtocolException e) {
-                    log.warn("{} sent an unparsable line: {}", name, e.getMessage());
-                    send(Message.error("malformed message: " + e.getMessage()));
-                    continue;
-                }
-                if (msg.type() == null) {
-                    log.warn("{} sent a message with no usable type", name);
-                    send(Message.error("malformed message: missing or unknown type"));
-                    continue;
-                }
-                switch (msg.type()) {
-                    case CHAT -> {
-                        Message broadcast = Message.broadcast(name, msg.body());
-                        persist(broadcast);
-                        registry.broadcast(broadcast, this);
-                    }
-                    case USER_LIST -> send(Message.userList(registry.onlineUsers()));
-                    case QUIT -> { return; }
-                    default   -> {
-                        log.warn("{} sent an unexpected type: {}", name, msg.type());
-                        send(Message.error("unexpected type: " + msg.type()));
-                    }
+            while (state != State.CLOSED && (line = in.readLine()) != null) {
+                switch (state) {
+                    case AWAITING_AUTH -> authenticate(line, registry);
+                    case AUTHENTICATED -> handle(line, registry);
                 }
             }
         } catch (IOException e) {
@@ -80,20 +57,47 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    private boolean register(BufferedReader in, ClientRegistry registry) throws IOException {
-        send(Message.system("Enter your name:"));
-        String line;
-        while ((line = in.readLine()) != null) {
-            String candidate = line.isBlank() ? "anon" : line;
-            if (registry.addIfAbsent(candidate, this)) {
-                name = candidate;
-                registered = true;
-                return true;
-            }
+    private void authenticate(String line, ClientRegistry registry) {
+        String candidate = line.isBlank() ? "anon" : line;
+        if (!registry.addIfAbsent(candidate, this)) {
             send(Message.error("username '" + candidate + "' is already taken"));
-            send(Message.system("Enter your name:"));
+            send(Message.system(NAME_PROMPT));
+            return;
         }
-        return false;
+        name = candidate;
+        state = State.AUTHENTICATED;
+        log.info("{} joined, {} online", name, registry.size());
+        sendHistory();
+        registry.broadcast(Message.system(name + " joined"), this);
+    }
+
+    private void handle(String line, ClientRegistry registry) {
+        Message msg;
+        try {
+            msg = Protocol.decode(line);
+        } catch (ProtocolException e) {
+            log.warn("{} sent an unparsable line: {}", name, e.getMessage());
+            send(Message.error("malformed message: " + e.getMessage()));
+            return;
+        }
+        if (msg.type() == null) {
+            log.warn("{} sent a message with no usable type", name);
+            send(Message.error("malformed message: missing or unknown type"));
+            return;
+        }
+        switch (msg.type()) {
+            case CHAT -> {
+                Message broadcast = Message.broadcast(name, msg.body());
+                persist(broadcast);
+                registry.broadcast(broadcast, this);
+            }
+            case USER_LIST -> send(Message.userList(registry.onlineUsers()));
+            case QUIT -> state = State.CLOSED;
+            default   -> {
+                log.warn("{} sent an unexpected type: {}", name, msg.type());
+                send(Message.error("unexpected type: " + msg.type()));
+            }
+        }
     }
 
     private void sendHistory() {
@@ -116,8 +120,8 @@ public class ClientHandler implements Runnable {
     }
 
     private void close(ClientRegistry registry) {
-        if (registered) {
-            registry.remove(name, this);
+        state = State.CLOSED;
+        if (registry.remove(name, this)) {
             log.info("{} left, {} online", name, registry.size());
             registry.broadcast(Message.system(name + " left"), this);
         }
