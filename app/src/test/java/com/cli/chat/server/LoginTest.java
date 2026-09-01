@@ -1,6 +1,7 @@
 package com.cli.chat.server;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.BufferedReader;
@@ -136,6 +137,52 @@ class LoginTest {
             alice.send(login("alice", null));
 
             assertEquals(MessageType.ERROR, alice.receive().type());
+        }
+    }
+
+    @Test
+    void aThirdFailedLoginClosesTheConnection() throws Exception {
+        try (TestClient attacker = connect()) {
+            for (int strike = 0; strike < 3; strike++) {
+                attacker.send(login("nobody", "guessing"));
+                assertEquals(MessageType.LOGIN_FAIL, attacker.receive().type());
+            }
+
+            Message notice = attacker.receive();
+            assertEquals(MessageType.ERROR, notice.type());
+            assertTrue(notice.body().contains("too many failed logins"), "the client should be told why");
+
+            assertNull(attacker.in.readLine(), "the server should have closed the connection");
+        }
+    }
+
+    @Test
+    void twoFailedLoginsStillLeaveARetry() throws Exception {
+        try (TestClient alice = connect()) {
+            for (int strike = 0; strike < 2; strike++) {
+                alice.send(login("nobody", "guessing"));
+                assertEquals(MessageType.LOGIN_FAIL, alice.receive().type());
+            }
+
+            alice.send(login("alice", PASSWORD));
+            assertEquals(MessageType.LOGIN_OK, alice.receive().type(), "strikes must not block a good password");
+        }
+    }
+
+    @Test
+    void strikesAreCountedPerConnection() throws Exception {
+        try (TestClient attacker = connect()) {
+            for (int strike = 0; strike < 3; strike++) {
+                attacker.send(login("alice", "guessing"));
+                attacker.receive();
+            }
+            attacker.receive();
+        }
+
+        try (TestClient alice = connect()) {
+            alice.send(login("alice", PASSWORD));
+            assertEquals(MessageType.LOGIN_OK, alice.receive().type(),
+                    "a fresh connection starts with a clean slate");
         }
     }
 
