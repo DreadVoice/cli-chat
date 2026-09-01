@@ -16,7 +16,10 @@ import com.cli.chat.common.Message;
 import com.cli.chat.common.MessageType;
 import com.cli.chat.common.Protocol;
 import com.cli.chat.common.exception.ProtocolException;
+import com.cli.chat.common.exception.StorageException;
+import com.cli.chat.common.exception.UsernameTakenException;
 import com.cli.chat.db.MessageWriter;
+import com.cli.chat.db.UserRepository;
 
 public class ClientHandler implements Runnable {
 
@@ -63,36 +66,76 @@ public class ClientHandler implements Runnable {
     }
 
     private void authenticate(String line, ClientRegistry registry) {
-        if (rejectedBeforeAuth(line)) {
+        Message msg = decodeOrNull(line);
+        MessageType type = msg == null ? null : msg.type();
+        if (type != null && !AUTH_TYPES.contains(type)) {
+            log.warn("unauthenticated client sent {}", type);
+            send(Message.error("not authenticated: send your name before " + type));
+            send(Message.system(NAME_PROMPT));
             return;
         }
-        String candidate = line.isBlank() ? "anon" : line;
+        if (type == MessageType.REGISTER) {
+            register(msg, registry);
+            return;
+        }
+        claimName(line.isBlank() ? "anon" : line, registry);
+    }
+
+    private void register(Message msg, ClientRegistry registry) {
+        String username = msg.sender();
+        String password = msg.body();
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+            send(Message.error("register requires a username and a password"));
+            return;
+        }
+        UserRepository users = server.users();
+        if (users == null) {
+            log.error("{} tried to register but no user store is configured", username);
+            send(Message.loginFailure("registration is unavailable"));
+            return;
+        }
+        try {
+            users.create(username, PasswordHasher.hash(password));
+        } catch (UsernameTakenException e) {
+            log.warn("registration rejected: {}", e.getMessage());
+            send(Message.loginFailure(e.getMessage()));
+            return;
+        } catch (StorageException e) {
+            log.error("could not register {}", username, e);
+            send(Message.loginFailure("could not register " + username));
+            return;
+        }
+        if (!registry.addIfAbsent(username, this)) {
+            send(Message.loginFailure("username '" + username + "' is already online"));
+            return;
+        }
+        send(Message.loginSuccess(username));
+        enterChat(username, registry);
+    }
+
+    private void claimName(String candidate, ClientRegistry registry) {
         if (!registry.addIfAbsent(candidate, this)) {
             send(Message.error("username '" + candidate + "' is already taken"));
             send(Message.system(NAME_PROMPT));
             return;
         }
-        name = candidate;
+        enterChat(candidate, registry);
+    }
+
+    private void enterChat(String username, ClientRegistry registry) {
+        name = username;
         state = State.AUTHENTICATED;
         log.info("{} joined, {} online", name, registry.size());
         sendHistory();
         registry.broadcast(Message.system(name + " joined"), this);
     }
 
-    private boolean rejectedBeforeAuth(String line) {
-        MessageType type;
+    private Message decodeOrNull(String line) {
         try {
-            type = Protocol.decode(line).type();
+            return Protocol.decode(line);
         } catch (ProtocolException e) {
-            return false;
+            return null;
         }
-        if (type == null || AUTH_TYPES.contains(type)) {
-            return false;
-        }
-        log.warn("unauthenticated client sent {}", type);
-        send(Message.error("not authenticated: send your name before " + type));
-        send(Message.system(NAME_PROMPT));
-        return true;
     }
 
     private void handle(String line, ClientRegistry registry) {
