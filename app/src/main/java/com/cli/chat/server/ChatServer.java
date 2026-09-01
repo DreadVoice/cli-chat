@@ -16,6 +16,8 @@ import com.cli.chat.db.Database;
 import com.cli.chat.db.MessageRepository;
 import com.cli.chat.db.MessageWriter;
 import com.cli.chat.db.SqliteMessageRepository;
+import com.cli.chat.db.SqliteUserRepository;
+import com.cli.chat.db.UserRepository;
 
 public class ChatServer {
 
@@ -29,6 +31,7 @@ public class ChatServer {
     private final int requestedPort;
     private final MessageWriter writer;
     private final MessageRepository history;
+    private final UserRepository users;
     private final RecentMessages recent = new RecentMessages(CACHE_SIZE);
     private final ClientRegistry registry = new ClientRegistry();
     private final ExecutorService pool = Executors.newCachedThreadPool();
@@ -38,17 +41,22 @@ public class ChatServer {
     private int boundPort;
 
     public ChatServer(int port) {
-        this(port, null, null);
+        this(port, null, null, null);
     }
 
     public ChatServer(int port, MessageWriter writer) {
-        this(port, writer, null);
+        this(port, writer, null, null);
     }
 
     public ChatServer(int port, MessageWriter writer, MessageRepository history) {
+        this(port, writer, history, null);
+    }
+
+    public ChatServer(int port, MessageWriter writer, MessageRepository history, UserRepository users) {
         this.requestedPort = port;
         this.writer = writer;
         this.history = history;
+        this.users = users;
     }
 
     MessageWriter writer() {
@@ -57,6 +65,10 @@ public class ChatServer {
 
     MessageRepository history() {
         return history;
+    }
+
+    UserRepository users() {
+        return users;
     }
 
     RecentMessages recent() {
@@ -150,10 +162,11 @@ public class ChatServer {
         database.initialise();
 
         SqliteMessageRepository repository = new SqliteMessageRepository(database);
+        SqliteUserRepository users = new SqliteUserRepository(database);
         MessageWriter writer = new MessageWriter(repository);
         writer.start();
 
-        ChatServer server = new ChatServer(port, writer, repository);
+        ChatServer server = new ChatServer(port, writer, repository, users);
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "shutdown"));
         server.start();
     }
