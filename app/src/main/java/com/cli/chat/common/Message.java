@@ -20,6 +20,9 @@ public record Message(
         return new Message(MessageType.USER_LIST, "SERVER", null,
                 String.join(", ", List.copyOf(usernames)), System.currentTimeMillis());
     }
+    public static Message privateDelivery(String sender, String recipient, String body) {
+        return new Message(MessageType.PRIVATE_DELIVERY, sender, recipient, body, System.currentTimeMillis());
+    }
     public static Message loginOk(String username) {
         return new Message(MessageType.LOGIN_OK, "SERVER", username,
                 "welcome, " + username, System.currentTimeMillis());

@@ -226,6 +226,81 @@ class ChatServerTest {
     }
 
     @Test
+    void aPrivateMessageReachesOnlyItsRecipient() throws Exception {
+        try (TestClient alice = connect("alice");
+             TestClient bob = connect("bob");
+             TestClient carol = connect("carol")) {
+
+            alice.receive();
+            alice.receive();
+            bob.receive();
+
+            alice.send(new Message(MessageType.PRIVATE, "alice", "bob", "just for you", 0L));
+
+            Message delivered = bob.receive();
+            assertEquals(MessageType.PRIVATE_DELIVERY, delivered.type());
+            assertEquals("alice", delivered.sender());
+            assertEquals("bob", delivered.recipient());
+            assertEquals("just for you", delivered.body());
+
+            assertThrows(SocketTimeoutException.class, carol.in::readLine,
+                    "a private message must not reach anyone else");
+        }
+    }
+
+    @Test
+    void aPrivateMessageIsEchoedToItsSender() throws Exception {
+        try (TestClient alice = connect("alice");
+             TestClient bob = connect("bob")) {
+
+            alice.receive();
+
+            alice.send(new Message(MessageType.PRIVATE, "alice", "bob", "just for you", 0L));
+
+            Message echo = alice.receive();
+            assertEquals(MessageType.PRIVATE_DELIVERY, echo.type());
+            assertEquals("alice", echo.sender());
+            assertEquals("bob", echo.recipient(), "the echo should name the recipient");
+            assertEquals("just for you", echo.body());
+        }
+    }
+
+    @Test
+    void aPrivateMessageToSomeoneOfflineIsRejected() throws Exception {
+        try (TestClient alice = connect("alice")) {
+            alice.send(new Message(MessageType.PRIVATE, "alice", "ghost", "anyone there", 0L));
+
+            Message reply = alice.receive();
+            assertEquals(MessageType.ERROR, reply.type());
+            assertTrue(reply.body().contains("ghost"), "error should name the missing user");
+
+            alice.send(chat("still here"));
+        }
+    }
+
+    @Test
+    void aPrivateMessageWithoutARecipientIsRejected() throws Exception {
+        try (TestClient alice = connect("alice")) {
+            alice.send(new Message(MessageType.PRIVATE, "alice", null, "to nobody", 0L));
+
+            Message reply = alice.receive();
+            assertEquals(MessageType.ERROR, reply.type());
+            assertTrue(reply.body().contains("recipient"), "error should say what is missing");
+        }
+    }
+
+    @Test
+    void aPrivateMessageToYourselfArrivesOnce() throws Exception {
+        try (TestClient alice = connect("alice")) {
+            alice.send(new Message(MessageType.PRIVATE, "alice", "alice", "note to self", 0L));
+
+            assertEquals(MessageType.PRIVATE_DELIVERY, alice.receive().type());
+            assertThrows(SocketTimeoutException.class, alice.in::readLine,
+                    "the sender and the recipient share one socket");
+        }
+    }
+
+    @Test
     void registryTracksOnlineUsers() throws Exception {
         try (TestClient alice = connect("alice");
              TestClient bob = connect("bob")) {
