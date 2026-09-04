@@ -230,8 +230,7 @@ public class ClientHandler implements Runnable {
         }
         Optional<ClientHandler> target = registry.find(recipient);
         if (target.isEmpty()) {
-            log.warn("{} sent a private message to {}, who is not online", name, recipient);
-            send(Message.error("user '" + recipient + "' is not online"));
+            send(offlineTarget(recipient));
             return;
         }
         Message delivery = Message.privateDelivery(name, recipient, msg.body());
@@ -239,6 +238,25 @@ public class ClientHandler implements Runnable {
         if (target.get() != this) {
             send(delivery);
         }
+    }
+
+    private Message offlineTarget(String recipient) {
+        UserRepository users = server.users();
+        if (users == null) {
+            log.warn("{} sent a private message to {}, who is not online", name, recipient);
+            return Message.error("user '" + recipient + "' is not online");
+        }
+        try {
+            if (users.exists(recipient)) {
+                log.warn("{} sent a private message to {}, who is offline", name, recipient);
+                return Message.error("user '" + recipient + "' is offline");
+            }
+        } catch (StorageException e) {
+            log.error("could not look up {}", recipient, e);
+            return Message.error("user '" + recipient + "' is not online");
+        }
+        log.warn("{} sent a private message to {}, who has no account", name, recipient);
+        return Message.error("no such user '" + recipient + "'");
     }
 
     private void sendHistory() {
