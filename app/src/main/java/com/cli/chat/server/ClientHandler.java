@@ -212,12 +212,32 @@ public class ClientHandler implements Runnable {
                 persist(broadcast);
                 registry.broadcast(broadcast, this);
             }
+            case PRIVATE -> deliverPrivate(msg, registry);
             case USER_LIST -> send(Message.userList(registry.onlineUsers()));
             case QUIT -> state = State.CLOSED;
             default   -> {
                 log.warn("{} sent an unexpected type: {}", name, msg.type());
                 send(Message.error("unexpected type: " + msg.type()));
             }
+        }
+    }
+
+    private void deliverPrivate(Message msg, ClientRegistry registry) {
+        String recipient = msg.recipient();
+        if (recipient == null || recipient.isBlank()) {
+            send(Message.error("private message requires a recipient"));
+            return;
+        }
+        Optional<ClientHandler> target = registry.find(recipient);
+        if (target.isEmpty()) {
+            log.warn("{} sent a private message to {}, who is not online", name, recipient);
+            send(Message.error("user '" + recipient + "' is not online"));
+            return;
+        }
+        Message delivery = Message.privateDelivery(name, recipient, msg.body());
+        target.get().send(delivery);
+        if (target.get() != this) {
+            send(delivery);
         }
     }
 
