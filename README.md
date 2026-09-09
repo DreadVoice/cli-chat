@@ -18,12 +18,14 @@ cd app
 mvn test
 ```
 
-Start the server (defaults: port `5000`, database `chat.db` in the working directory). Both
-arguments are optional and positional - `<port> <database-path>`:
+Start the server (defaults: port `5000`, database `chat.db` in the working directory, no
+admins). All three arguments are optional and positional, `<port> <database-path> <admins>`,
+where `<admins>` is a comma-separated list of usernames:
 
 ```bash
 mvn -q compile exec:java -Dexec.mainClass=com.cli.chat.server.ChatServer
 mvn -q compile exec:java -Dexec.mainClass=com.cli.chat.server.ChatServer -Dexec.args="5000 chat.db"
+mvn -q compile exec:java -Dexec.mainClass=com.cli.chat.server.ChatServer -Dexec.args="5000 chat.db root,ops"
 ```
 
 Start a client in another terminal (`<host> <port>`, defaults `localhost 5000`):
@@ -40,6 +42,9 @@ The client prompts for a name, then relays anything typed as a chat message.
 | `/who`   | print the list of users currently online  |
 | `/quit`  | leave and close the connection            |
 
+These three are all the bundled client can send. Accounts, private messages and the server
+commands below are reachable from any client that speaks the JSON protocol directly.
+
 The server logs to the console via SLF4J/Logback; see
 [app/src/main/resources/logback.xml](app/src/main/resources/logback.xml) to change levels.
 Client faults (bad JSON, unknown message types, dropped connections) log at `WARN`, server
@@ -51,15 +56,16 @@ faults at `ERROR`.
 client/                 common/                server/                db/
   ChatClient ── TCP ──►  Protocol (JSON)  ──►  ChatServer            Database
                          Message               ├─ ClientRegistry     MessageWriter ──► SQLite
-                         MessageType           ├─ RecentMessages     MessageRepository
-                         exception/            ├─ ClientHandler      UserRepository
+                         MessageType           ├─ CommandRegistry    MessageRepository
+                         exception/            ├─ RecentMessages     UserRepository
+                                               ├─ ClientHandler
                                                └─ PasswordHasher
 ```
 
 | Package  | Responsibility                                                          |
 |----------|-------------------------------------------------------------------------|
 | `common` | Wire format: the `Message` record, `MessageType`, `Protocol`, exceptions |
-| `server` | Accept loop, auth, per-client handlers, online registry, in-memory history |
+| `server` | Accept loop, auth, commands, per-client handlers, online registry, history |
 | `db`     | SQLite access, repositories, the asynchronous write queue                |
 | `client` | Terminal client                                                          |
 
@@ -152,8 +158,8 @@ The bundled `ChatClient` still sends the raw name line; it does not speak `LOGIN
 | `QUIT`      | leave                             | implemented |
 | `LOGIN`     | authenticate                      | implemented |
 | `REGISTER`  | create an account                 | implemented |
-| `PRIVATE`   | direct message to `recipient`     | reserved    |
-| `COMMAND`   | slash command                     | reserved    |
+| `PRIVATE`   | direct message to `recipient`     | implemented |
+| `COMMAND`   | slash command, the line in `body` | implemented |
 
 **Server to client**
 
@@ -163,12 +169,47 @@ The bundled `ChatClient` still sends the raw name line; it does not speak `LOGIN
 | `SYSTEM`           | notice: prompts, joins, leaves, history header | implemented |
 | `ERROR`            | rejected input, with a reason in `body`        | implemented |
 | `USER_LIST`        | roster, comma-separated in `body`              | implemented |
-| `PRIVATE_DELIVERY` | delivery of a direct message                   | reserved    |
+| `PRIVATE_DELIVERY` | delivery of a direct message                   | implemented |
 | `LOGIN_OK`         | authentication accepted, user in `recipient`   | implemented |
 | `LOGIN_FAIL`       | authentication rejected, reason in `body`      | implemented |
 
-Reserved types exist in `MessageType` but are not yet handled; sending one gets an `ERROR`
-reply and the connection stays open.
+Every type in `MessageType` is handled. A client that sends one of the server-to-client
+types gets an `ERROR` naming it, and the connection stays open.
+
+### Private messages
+
+`PRIVATE` carries the target in `recipient` and the text in `body`. The server looks the
+target up in `ClientRegistry`, sends them a `PRIVATE_DELIVERY`, and echoes the same message
+back to the sender, so both sides see it. A message addressed to yourself arrives once.
+
+When the target is not connected, nothing is delivered and the sender is told which case it
+is: `user 'bob' is offline` when the account exists, `no such user 'bob'` when it does not,
+and `user 'bob' is not online` when the server has no user store to ask. Nothing is queued
+for later.
+
+### Commands
+
+`COMMAND` carries the whole command line in `body`, with or without the leading slash. The
+server splits the name from the arguments on the first run of whitespace, looks the name up
+in a `CommandRegistry` (case-insensitive), and answers an unknown name with an `ERROR`
+suggesting `/help`. Commands run only after the connection has authenticated.
+
+| Command                     | Effect                                              | Who    |
+|-----------------------------|-----------------------------------------------------|--------|
+| `/help`                     | list every command with its usage                   | anyone |
+| `/list`                     | the roster of users currently online                | anyone |
+| `/history [count]`          | replay the last `count` messages, 20 by default     | anyone |
+| `/whisper <user> <message>` | a private message, the same path as `PRIVATE`       | anyone |
+| `/kick <user>`              | disconnect a user, telling them who kicked them     | admin  |
+| `/shutdown`                 | tell everyone, then stop the server                 | admin  |
+
+### Admins
+
+Admin usernames are configured at start-up, as the third argument to the server. The flag is
+set on a connection only when it authenticates with `LOGIN`, so claiming an admin name with
+the raw name line grants nothing, and registering an admin name does not either: the password
+has to check out against the stored hash first. A non-admin asking for `/kick` or `/shutdown`
+gets an `ERROR` and nothing happens.
 
 ### Errors
 
@@ -206,12 +247,14 @@ measures the indices against 200 000 rows (run it manually; it is a `main`, not 
 - [x] **Auth** - `LOGIN` / `REGISTER` against the `users` table, bcrypt password hashing at
       cost 12, `UsernameTakenException` wired into the handshake, and three failed logins
       closing the socket.
-- [ ] **Auth for the client** - move `ChatClient` onto `LOGIN` / `REGISTER` and retire the
-      raw name line, so a name is owned by an account rather than claimed first-come.
-- [ ] **Private messaging** - `PRIVATE` to `PRIVATE_DELIVERY` routed through
-      `ClientRegistry.find`, with `MessageRepository.recentFor` backing per-user history.
-- [ ] **Commands** - a `COMMAND` type and a server-side dispatcher, moving `/who` off its
-      current ad-hoc handling and adding `/help`, `/msg`, `/history N`.
+- [x] **Auth for the client** - the server takes `LOGIN` and `REGISTER` from any client that
+      speaks them, and still accepts the raw name line; `ChatClient` itself has not moved over.
+- [x] **Private messaging** - `PRIVATE` to `PRIVATE_DELIVERY` routed through
+      `ClientRegistry.find`, echoed to the sender, with offline and unknown targets told
+      apart; `MessageRepository.recentFor` does not back per-user history yet.
+- [x] **Commands** - a `COMMAND` type, a server-side dispatcher over a `Command` registry,
+      and `/help`, `/list`, `/history`, `/whisper`, plus the admin-only `/kick` and
+      `/shutdown`. The `USER_LIST` type still answers `/who` alongside `/list`.
 - [ ] **TLS** - `SSLServerSocket` with a configurable keystore, so credentials and message
       bodies are not sent in the clear.
 - [ ] **CLI** - proper argument parsing for both binaries (flags instead of positional
