@@ -34,6 +34,7 @@ public class ChatServer {
     private final UserRepository users;
     private final RecentMessages recent = new RecentMessages(CACHE_SIZE);
     private final ClientRegistry registry = new ClientRegistry();
+    private final CommandRegistry commands = new CommandRegistry();
     private final ExecutorService pool = Executors.newCachedThreadPool();
 
     private ServerSocket serverSocket;
@@ -57,6 +58,10 @@ public class ChatServer {
         this.writer = writer;
         this.history = history;
         this.users = users;
+        commands.register(new HelpCommand());
+        commands.register(new HistoryCommand());
+        commands.register(new ListCommand());
+        commands.register(new WhisperCommand());
     }
 
     MessageWriter writer() {
@@ -77,6 +82,10 @@ public class ChatServer {
 
     ClientRegistry registry() {  
         return registry;
+    }
+
+    CommandRegistry commands() {
+        return commands;
     }
 
     public void start() throws IOException {

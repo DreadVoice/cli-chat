@@ -213,6 +213,7 @@ public class ClientHandler implements Runnable {
                 registry.broadcast(broadcast, this);
             }
             case PRIVATE -> deliverPrivate(msg, registry);
+            case COMMAND -> runCommand(msg);
             case USER_LIST -> send(Message.userList(registry.onlineUsers()));
             case QUIT -> state = State.CLOSED;
             default   -> {
@@ -222,7 +223,24 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    private void deliverPrivate(Message msg, ClientRegistry registry) {
+    private void runCommand(Message msg) {
+        String line = msg.body() == null ? "" : msg.body().strip();
+        if (line.startsWith("/")) {
+            line = line.substring(1);
+        }
+        String[] parts = line.split("\\s+", 2);
+        String commandName = parts[0];
+        String arguments = parts.length > 1 ? parts[1] : "";
+        Optional<Command> command = server.commands().find(commandName);
+        if (command.isEmpty()) {
+            log.warn("{} sent an unknown command: {}", name, commandName);
+            send(Message.error("unknown command '" + commandName + "', try /help"));
+            return;
+        }
+        command.get().run(this, arguments, server);
+    }
+
+    void deliverPrivate(Message msg, ClientRegistry registry) {
         String recipient = msg.recipient();
         if (recipient == null || recipient.isBlank()) {
             send(Message.error("private message requires a recipient"));
