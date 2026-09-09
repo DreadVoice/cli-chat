@@ -40,6 +40,7 @@ public class ClientHandler implements Runnable {
     private PrintWriter out;
     private String name = "anon";
     private State state = State.AWAITING_AUTH;
+    private boolean admin;
     private int failedLogins;
 
     ClientHandler(Socket socket, ChatServer server) {
@@ -153,6 +154,7 @@ public class ClientHandler implements Runnable {
             failLogin("username '" + username + "' is already online");
             return;
         }
+        admin = server.isAdmin(username);
         send(Message.loginOk(username));
         enterChat(username, registry);
     }
@@ -311,6 +313,10 @@ public class ClientHandler implements Runnable {
 
     String getUsername() {
         return name;
+    }
+
+    boolean isAdmin() {
+        return admin;
     }
 
     void disconnect() {

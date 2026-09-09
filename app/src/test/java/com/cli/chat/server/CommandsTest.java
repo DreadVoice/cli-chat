@@ -73,10 +73,11 @@ class CommandsTest {
 
             assertEquals("commands:", alice.receive().body());
             List<String> usages = new ArrayList<>();
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 6; i++) {
                 usages.add(alice.receive().body());
             }
-            assertEquals(List.of("/help", "/history [count]", "/list", "/whisper <user> <message>"), usages);
+            assertEquals(List.of("/help", "/history [count]", "/kick <user>", "/list", "/shutdown",
+                    "/whisper <user> <message>"), usages);
         }
     }
 

@@ -3,9 +3,12 @@ package com.cli.chat.server;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Arrays;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +35,7 @@ public class ChatServer {
     private final MessageWriter writer;
     private final MessageRepository history;
     private final UserRepository users;
+    private final Set<String> admins;
     private final RecentMessages recent = new RecentMessages(CACHE_SIZE);
     private final ClientRegistry registry = new ClientRegistry();
     private final CommandRegistry commands = new CommandRegistry();
@@ -54,13 +58,21 @@ public class ChatServer {
     }
 
     public ChatServer(int port, MessageWriter writer, MessageRepository history, UserRepository users) {
+        this(port, writer, history, users, Set.of());
+    }
+
+    public ChatServer(int port, MessageWriter writer, MessageRepository history, UserRepository users,
+                      Set<String> admins) {
         this.requestedPort = port;
         this.writer = writer;
         this.history = history;
         this.users = users;
+        this.admins = admins == null ? Set.of() : Set.copyOf(admins);
         commands.register(new HelpCommand());
         commands.register(new HistoryCommand());
+        commands.register(new KickCommand());
         commands.register(new ListCommand());
+        commands.register(new ShutdownCommand());
         commands.register(new WhisperCommand());
     }
 
@@ -86,6 +98,10 @@ public class ChatServer {
 
     CommandRegistry commands() {
         return commands;
+    }
+
+    boolean isAdmin(String username) {
+        return admins.contains(username);
     }
 
     public void start() throws IOException {
@@ -166,6 +182,7 @@ public class ChatServer {
     public static void main(String[] args) throws IOException, StorageException {
         int port = args.length > 0 ? Integer.parseInt(args[0]) : DEFAULT_PORT;
         String databasePath = args.length > 1 ? args[1] : DEFAULT_DATABASE;
+        Set<String> admins = args.length > 2 ? parseAdmins(args[2]) : Set.of();
 
         Database database = Database.file(databasePath);
         database.initialise();
@@ -175,8 +192,15 @@ public class ChatServer {
         MessageWriter writer = new MessageWriter(repository);
         writer.start();
 
-        ChatServer server = new ChatServer(port, writer, repository, users);
+        ChatServer server = new ChatServer(port, writer, repository, users, admins);
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "shutdown"));
         server.start();
+    }
+
+    private static Set<String> parseAdmins(String argument) {
+        return Arrays.stream(argument.split(","))
+                .map(String::strip)
+                .filter(name -> !name.isBlank())
+                .collect(Collectors.toUnmodifiableSet());
     }
 }
