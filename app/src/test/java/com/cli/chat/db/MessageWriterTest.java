@@ -19,12 +19,12 @@ import com.cli.chat.common.exception.StorageException;
 
 class MessageWriterTest {
 
-    private InMemoryDatabase database;
+    private TempDatabase database;
     private MessageRepository messages;
 
     @BeforeEach
     void createRepository() throws StorageException {
-        database = InMemoryDatabase.create();
+        database = TempDatabase.create();
         messages = new SqliteMessageRepository(database.database());
     }
 

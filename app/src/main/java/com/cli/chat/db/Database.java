@@ -29,10 +29,6 @@ public class Database {
         return new Database("jdbc:sqlite:" + path);
     }
 
-    public static Database inMemory(String name) {
-        return new Database("jdbc:sqlite:file:" + name + "?mode=memory&cache=shared");
-    }
-
     public Connection open() throws StorageException {
         try {
             Connection connection = DriverManager.getConnection(url);

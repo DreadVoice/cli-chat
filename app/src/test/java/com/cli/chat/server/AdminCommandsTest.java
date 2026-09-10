@@ -21,7 +21,7 @@ import com.cli.chat.common.Message;
 import com.cli.chat.common.MessageType;
 import com.cli.chat.common.Protocol;
 import com.cli.chat.common.exception.ProtocolException;
-import com.cli.chat.db.InMemoryDatabase;
+import com.cli.chat.db.TempDatabase;
 import com.cli.chat.db.SqliteUserRepository;
 import com.cli.chat.db.UserRepository;
 
@@ -29,13 +29,13 @@ class AdminCommandsTest {
 
     private static final String PASSWORD = "s3cret";
 
-    private InMemoryDatabase database;
+    private TempDatabase database;
     private UserRepository users;
     private ChatServer server;
 
     @BeforeEach
     void startServer() throws Exception {
-        database = InMemoryDatabase.create();
+        database = TempDatabase.create();
         users = new SqliteUserRepository(database.database());
         users.create("root", PasswordHasher.hash(PASSWORD));
 

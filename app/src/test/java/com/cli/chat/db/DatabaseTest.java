@@ -88,9 +88,9 @@ class DatabaseTest {
     }
 
     @Test
-    void anInMemoryDatabaseLivesAsLongAsAConnectionIsHeld() throws Exception {
-        try (InMemoryDatabase memory = InMemoryDatabase.create();
-             Connection c = memory.database().open();
+    void aTemporaryDatabaseIsVisibleToASecondConnection() throws Exception {
+        try (TempDatabase temporary = TempDatabase.create();
+             Connection c = temporary.database().open();
              Statement s = c.createStatement();
              ResultSet rs = s.executeQuery(
                      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'users'")) {
@@ -100,14 +100,14 @@ class DatabaseTest {
     }
 
     @Test
-    void inMemoryDatabasesAreIsolatedFromEachOther() throws Exception {
-        try (InMemoryDatabase first = InMemoryDatabase.create();
-             InMemoryDatabase second = InMemoryDatabase.create()) {
+    void temporaryDatabasesAreIsolatedFromEachOther() throws Exception {
+        try (TempDatabase first = TempDatabase.create();
+             TempDatabase second = TempDatabase.create()) {
 
             new SqliteUserRepository(first.database()).create("alice", "hash");
 
             assertTrue(new SqliteUserRepository(second.database()).findByUsername("alice").isEmpty(),
-                    "each in-memory database must be a separate store");
+                    "each temporary database must be a separate store");
         }
     }
 }

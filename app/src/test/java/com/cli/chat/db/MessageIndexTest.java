@@ -15,11 +15,11 @@ import com.cli.chat.common.exception.StorageException;
 
 class MessageIndexTest {
 
-    private InMemoryDatabase database;
+    private TempDatabase database;
 
     @BeforeEach
     void createDatabase() throws StorageException {
-        database = InMemoryDatabase.create();
+        database = TempDatabase.create();
     }
 
     @AfterEach

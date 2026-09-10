@@ -25,13 +25,13 @@ import com.cli.chat.common.exception.UsernameTakenException;
 
 class SqliteUserRepositoryTest {
 
-    private InMemoryDatabase database;
+    private TempDatabase database;
 
     private UserRepository users;
 
     @BeforeEach
     void createRepository() throws StorageException {
-        database = InMemoryDatabase.create();
+        database = TempDatabase.create();
         users = new SqliteUserRepository(database.database());
     }
 

@@ -18,14 +18,14 @@ import org.junit.jupiter.api.Test;
 import com.cli.chat.common.Message;
 import com.cli.chat.common.MessageType;
 import com.cli.chat.common.exception.StorageException;
-import com.cli.chat.db.InMemoryDatabase;
+import com.cli.chat.db.TempDatabase;
 import com.cli.chat.db.MessageRepository;
 import com.cli.chat.db.MessageWriter;
 import com.cli.chat.db.SqliteMessageRepository;
 
 class ChatServerShutdownTest {
 
-    private InMemoryDatabase database;
+    private TempDatabase database;
     private MessageRepository messages;
     private MessageWriter writer;
     private ChatServer server;
@@ -33,7 +33,7 @@ class ChatServerShutdownTest {
 
     @BeforeEach
     void startServer() throws Exception {
-        database = InMemoryDatabase.create();
+        database = TempDatabase.create();
         messages = new SqliteMessageRepository(database.database());
         writer = new MessageWriter(messages);
         writer.start();
