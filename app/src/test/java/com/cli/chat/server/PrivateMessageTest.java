@@ -66,6 +66,14 @@ class PrivateMessageTest {
         return c;
     }
 
+    private TestClient loginAsBob() throws Exception {
+        TestClient c = new TestClient(server.getPort());
+        c.in.readLine();
+        c.send(new Message(MessageType.LOGIN, "bob", null, "s3cret", 0L));
+        assertEquals(MessageType.LOGIN_OK, c.receive().type());
+        return c;
+    }
+
     private static Message privateTo(String recipient, String body) {
         return new Message(MessageType.PRIVATE, "alice", recipient, body, 0L);
     }
@@ -111,7 +119,7 @@ class PrivateMessageTest {
             alice.send(privateTo("bob", "first try"));
             assertEquals(MessageType.ERROR, alice.receive().type());
 
-            try (TestClient bob = connect("bob")) {
+            try (TestClient bob = loginAsBob()) {
                 alice.receive();
 
                 alice.send(privateTo("bob", "second try"));

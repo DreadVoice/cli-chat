@@ -170,12 +170,36 @@ public class ClientHandler implements Runnable {
     }
 
     private void claimName(String candidate, ClientRegistry registry) {
+        Optional<Message> refusal = refuseClaim(candidate);
+        if (refusal.isPresent()) {
+            send(refusal.get());
+            send(Message.system(NAME_PROMPT));
+            return;
+        }
         if (!registry.addIfAbsent(candidate, this)) {
             send(Message.error("username '" + candidate + "' is already taken"));
             send(Message.system(NAME_PROMPT));
             return;
         }
         enterChat(candidate, registry);
+    }
+
+    private Optional<Message> refuseClaim(String candidate) {
+        UserRepository users = server.users();
+        if (users == null) {
+            return Optional.empty();
+        }
+        try {
+            if (users.exists(candidate)) {
+                log.warn("the name line was used for {}, which belongs to an account", candidate);
+                return Optional.of(Message.error(
+                        "username '" + candidate + "' belongs to an account, log in instead"));
+            }
+        } catch (StorageException e) {
+            log.error("could not check whether {} has an account", candidate, e);
+            return Optional.of(Message.error("could not check username '" + candidate + "', try again"));
+        }
+        return Optional.empty();
     }
 
     private void enterChat(String username, ClientRegistry registry) {

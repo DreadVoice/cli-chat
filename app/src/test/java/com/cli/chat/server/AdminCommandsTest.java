@@ -161,13 +161,16 @@ class AdminCommandsTest {
     }
 
     @Test
-    void claimingTheAdminNameWithTheNameLineDoesNotGrantAdmin() throws Exception {
+    void theAdminNameCannotBeClaimedWithTheNameLine() throws Exception {
         try (TestClient impostor = claim("root")) {
-            impostor.send(command("/kick nobody"));
-
             Message reply = impostor.receive();
             assertEquals(MessageType.ERROR, reply.type());
-            assertTrue(reply.body().contains("admins"), "admin comes from logging in, not from the name");
+            assertTrue(reply.body().contains("account"), "an account name needs a password");
+            assertEquals(MessageType.SYSTEM, impostor.receive().type(), "the prompt should come again");
+
+            impostor.send(command("/kick nobody"));
+            assertTrue(impostor.receive().body().contains("not authenticated"),
+                    "a refused name leaves the client unauthenticated");
         }
     }
 

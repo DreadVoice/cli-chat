@@ -194,6 +194,45 @@ class LoginTest {
     }
 
     @Test
+    void theNameLineCannotClaimARegisteredName() throws Exception {
+        try (TestClient impostor = connect()) {
+            impostor.out.println("alice");
+
+            Message reply = impostor.receive();
+            assertEquals(MessageType.ERROR, reply.type());
+            assertTrue(reply.body().contains("alice"), "the refusal should name the account");
+            assertTrue(reply.body().contains("log in"), "the refusal should say what to do instead");
+            assertEquals(MessageType.SYSTEM, impostor.receive().type(), "the prompt should come again");
+
+            impostor.send(new Message(MessageType.CHAT, "alice", null, "am i in", 0L));
+            assertEquals(MessageType.ERROR, impostor.receive().type(),
+                    "a refused name must not authenticate the client");
+        }
+    }
+
+    @Test
+    void theNameLineStillWorksForAnUnregisteredName() throws Exception {
+        try (TestClient carol = connect()) {
+            carol.out.println("carol");
+
+            carol.send(new Message(MessageType.USER_LIST, "carol", null, null, 0L));
+            assertEquals("carol", carol.receive().body(), "names without an account are still claimable");
+        }
+    }
+
+    @Test
+    void aRegisteredNameIsStillReachedByLoggingIn() throws Exception {
+        try (TestClient alice = connect()) {
+            alice.out.println("alice");
+            alice.receive();
+            alice.receive();
+
+            alice.send(login("alice", PASSWORD));
+            assertEquals(MessageType.LOGIN_OK, alice.receive().type(), "the account owner can still get in");
+        }
+    }
+
+    @Test
     void aThirdFailedLoginClosesTheConnection() throws Exception {
         try (TestClient attacker = connect()) {
             for (int strike = 0; strike < 3; strike++) {
