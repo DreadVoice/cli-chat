@@ -15,6 +15,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
@@ -335,6 +336,55 @@ class ChatServerTest {
             alice.send(chat("still here"));
             alice.send(new Message(MessageType.USER_LIST, "alice", null, null, 0L));
             assertEquals("alice", alice.receive().body(), "the connection survives an overlong line");
+        }
+    }
+
+    @Test
+    void aClientThatStopsReadingIsDroppedInsteadOfBlockingTheServer() throws Exception {
+        try (TestClient alice = connect("alice");
+             TestClient sleeper = connect("sleeper");
+             TestClient bob = connect("bob")) {
+
+            AtomicBoolean running = new AtomicBoolean(true);
+
+            Thread drainer = new Thread(() -> {
+                while (running.get()) {
+                    try {
+                        alice.in.readLine();
+                    } catch (IOException e) {
+                        return;
+                    }
+                }
+            });
+            drainer.setDaemon(true);
+            drainer.start();
+
+            Thread flood = new Thread(() -> {
+                for (int i = 0; running.get() && i < 500_000; i++) {
+                    try {
+                        alice.send(new Message(MessageType.PRIVATE, "alice", "sleeper", "flood " + i, 0L));
+                    } catch (ProtocolException e) {
+                        return;
+                    }
+                }
+            });
+            flood.setDaemon(true);
+            flood.start();
+
+            try {
+                boolean dropped = false;
+                long deadline = System.currentTimeMillis() + 15000;
+                while (!dropped && System.currentTimeMillis() < deadline) {
+                    bob.send(new Message(MessageType.USER_LIST, "bob", null, null, 0L));
+                    Message reply = bob.receive();
+                    if (reply.type() == MessageType.USER_LIST) {
+                        dropped = !reply.body().contains("sleeper");
+                    }
+                }
+                assertTrue(dropped, "a client that never reads should be dropped, not left blocking a sender");
+            } finally {
+                running.set(false);
+            }
         }
     }
 

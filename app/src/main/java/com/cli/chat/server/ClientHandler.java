@@ -3,7 +3,6 @@ package com.cli.chat.server;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.EnumSet;
 import java.util.List;
@@ -38,8 +37,8 @@ public class ClientHandler implements Runnable {
 
     private final Socket socket;
     private final ChatServer server;
-    private PrintWriter out;
-    private String name = "anon";
+    private volatile ClientWriter out;
+    private volatile String name = "anon";
     private State state = State.AWAITING_AUTH;
     private boolean admin;
     private int failedLogins;
@@ -52,9 +51,11 @@ public class ClientHandler implements Runnable {
     @Override
     public void run() {
         ClientRegistry registry = server.registry();
-        try (BufferedReader in = new BufferedReader(
-                new InputStreamReader(socket.getInputStream()))) {
-            out = new PrintWriter(socket.getOutputStream(), true);
+        try {
+            BufferedReader in = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream()));
+            out = new ClientWriter(socket);
+            out.start();
             send(Message.system(NAME_PROMPT));
 
             BoundedLineReader reader = new BoundedLineReader(in, MAX_LINE_LENGTH);
@@ -346,10 +347,18 @@ public class ClientHandler implements Runnable {
             log.info("{} left, {} online", name, registry.size());
             registry.broadcast(Message.system(name + " left"), this);
         }
+        closeWriter();
         try {
             socket.close();
         } catch (IOException e) {
             log.warn("failed to close socket for {}: {}", name, e.getMessage());
+        }
+    }
+
+    private void closeWriter() {
+        ClientWriter writer = out;
+        if (writer != null) {
+            writer.close();
         }
     }
 
@@ -362,6 +371,7 @@ public class ClientHandler implements Runnable {
     }
 
     void disconnect() {
+        closeWriter();
         try {
             socket.close();
         } catch (IOException e) {
@@ -370,7 +380,6 @@ public class ClientHandler implements Runnable {
     }
 
     void send(Message msg) {
-        if (out == null) return;
         try {
             sendRaw(Protocol.encode(msg));
         } catch (ProtocolException e) {
@@ -379,7 +388,11 @@ public class ClientHandler implements Runnable {
     }
 
     void sendRaw(String line) {
-        if (out == null) return;
-        out.println(line);
+        ClientWriter writer = out;
+        if (writer == null) {
+            log.warn("dropping a line to {}, the connection has no writer yet", name);
+            return;
+        }
+        writer.submit(line);
     }
 }
