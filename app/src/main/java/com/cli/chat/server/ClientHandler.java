@@ -29,6 +29,7 @@ public class ClientHandler implements Runnable {
 
     private static final int HISTORY_SIZE = 20;
     private static final int MAX_LOGIN_ATTEMPTS = 3;
+    private static final int MAX_LINE_LENGTH = 8192;
     private static final String NAME_PROMPT = "Enter your name:";
     private static final Set<MessageType> AUTH_TYPES =
             EnumSet.of(MessageType.LOGIN, MessageType.REGISTER);
@@ -56,11 +57,17 @@ public class ClientHandler implements Runnable {
             out = new PrintWriter(socket.getOutputStream(), true);
             send(Message.system(NAME_PROMPT));
 
-            String line;
-            while (state != State.CLOSED && (line = in.readLine()) != null) {
+            BoundedLineReader reader = new BoundedLineReader(in, MAX_LINE_LENGTH);
+            BoundedLineReader.Line line;
+            while (state != State.CLOSED && (line = reader.next()) != null) {
+                if (line.tooLong()) {
+                    log.warn("{} sent a line of more than {} characters", name, MAX_LINE_LENGTH);
+                    send(Message.error("line too long, the limit is " + MAX_LINE_LENGTH + " characters"));
+                    continue;
+                }
                 switch (state) {
-                    case AWAITING_AUTH -> authenticate(line, registry);
-                    case AUTHENTICATED -> handle(line, registry);
+                    case AWAITING_AUTH -> authenticate(line.text(), registry);
+                    case AUTHENTICATED -> handle(line.text(), registry);
                 }
             }
         } catch (IOException e) {
@@ -93,8 +100,13 @@ public class ClientHandler implements Runnable {
     private void register(Message msg, ClientRegistry registry) {
         String username = msg.sender();
         String password = msg.body();
-        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+        if (password == null || password.isBlank()) {
             send(Message.error("register requires a username and a password"));
+            return;
+        }
+        Optional<String> rejection = Usernames.rejection(username);
+        if (rejection.isPresent()) {
+            send(Message.error(rejection.get()));
             return;
         }
         UserRepository users = server.users();
@@ -170,6 +182,12 @@ public class ClientHandler implements Runnable {
     }
 
     private void claimName(String candidate, ClientRegistry registry) {
+        Optional<String> rejection = Usernames.rejection(candidate);
+        if (rejection.isPresent()) {
+            send(Message.error(rejection.get()));
+            send(Message.system(NAME_PROMPT));
+            return;
+        }
         Optional<Message> refusal = refuseClaim(candidate);
         if (refusal.isPresent()) {
             send(refusal.get());

@@ -301,6 +301,44 @@ class ChatServerTest {
     }
 
     @Test
+    void aNameThatBreaksTheRulesIsRefusedAndThePromptComesAgain() throws Exception {
+        try (TestClient tester = new TestClient(server.getPort())) {
+            tester.in.readLine();
+
+            tester.out.println("bob, carol");
+            assertEquals(MessageType.ERROR, tester.receive().type());
+            assertEquals(MessageType.SYSTEM, tester.receive().type());
+
+            tester.out.println("SERVER");
+            assertTrue(tester.receive().body().contains("reserved"), "the server name is not claimable");
+            assertEquals(MessageType.SYSTEM, tester.receive().type());
+
+            tester.out.println("a".repeat(25));
+            assertTrue(tester.receive().body().contains("24 characters"), "the limit should be named");
+            assertEquals(MessageType.SYSTEM, tester.receive().type());
+
+            tester.out.println("bob");
+            tester.send(new Message(MessageType.USER_LIST, "bob", null, null, 0L));
+            assertEquals("bob", tester.receive().body(), "a valid name still works after the refusals");
+        }
+    }
+
+    @Test
+    void anOverlongLineIsRefusedWithoutDroppingTheClient() throws Exception {
+        try (TestClient alice = connect("alice")) {
+            alice.out.println("x".repeat(9000));
+
+            Message reply = alice.receive();
+            assertEquals(MessageType.ERROR, reply.type());
+            assertTrue(reply.body().contains("line too long"), "the client should be told the line was dropped");
+
+            alice.send(chat("still here"));
+            alice.send(new Message(MessageType.USER_LIST, "alice", null, null, 0L));
+            assertEquals("alice", alice.receive().body(), "the connection survives an overlong line");
+        }
+    }
+
+    @Test
     void registryTracksOnlineUsers() throws Exception {
         try (TestClient alice = connect("alice");
              TestClient bob = connect("bob")) {

@@ -200,6 +200,21 @@ class RegistrationTest {
     }
 
     @Test
+    void registeringANameThatBreaksTheRulesIsRejected() throws Exception {
+        try (TestClient alice = connect()) {
+            alice.send(register("bob, carol", PASSWORD));
+
+            Message reply = alice.receive();
+            assertEquals(MessageType.ERROR, reply.type());
+            assertTrue(users.findByUsername("bob, carol").isEmpty(), "nothing should be stored");
+
+            alice.send(register("SERVER", PASSWORD));
+            assertTrue(alice.receive().body().contains("reserved"), "the server name is not registrable");
+            assertTrue(users.findByUsername("SERVER").isEmpty(), "nothing should be stored");
+        }
+    }
+
+    @Test
     void registeringOnAServerWithoutAUserStoreFails() throws Exception {
         ChatServer plain = new ChatServer(0);
         Thread thread = new Thread(() -> {
