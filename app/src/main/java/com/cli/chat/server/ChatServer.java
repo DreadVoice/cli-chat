@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import com.cli.chat.common.Message;
 import com.cli.chat.common.exception.StorageException;
+import com.cli.chat.common.exception.TlsException;
 import com.cli.chat.db.Database;
 import com.cli.chat.db.MessageRepository;
 import com.cli.chat.db.MessageWriter;
@@ -22,6 +23,7 @@ import com.cli.chat.db.SqliteMessageRepository;
 import com.cli.chat.db.SqliteUserRepository;
 import com.cli.chat.net.PlainSocketFactory;
 import com.cli.chat.net.SocketFactory;
+import com.cli.chat.net.TlsSocketFactory;
 import com.cli.chat.db.UserRepository;
 
 public class ChatServer {
@@ -30,6 +32,9 @@ public class ChatServer {
 
     private static final int DEFAULT_PORT = 5000;
     private static final String DEFAULT_DATABASE = "chat.db";
+    private static final String KEYSTORE_PROPERTY = "chat.keystore";
+    private static final String KEYSTORE_PASSWORD_PROPERTY = "chat.keystore.password";
+    private static final String KEYSTORE_PASSWORD_VARIABLE = "CHAT_KEYSTORE_PASSWORD";
     private static final long POOL_TIMEOUT_SECONDS = 5;
     private static final int CACHE_SIZE = 100;
 
@@ -188,7 +193,7 @@ public class ChatServer {
         registry.remove(c.getUsername(), c);
     }
 
-    public static void main(String[] args) throws IOException, StorageException {
+    public static void main(String[] args) throws IOException, StorageException, TlsException {
         int port = args.length > 0 ? Integer.parseInt(args[0]) : DEFAULT_PORT;
         String databasePath = args.length > 1 ? args[1] : DEFAULT_DATABASE;
         Set<String> admins = args.length > 2 ? parseAdmins(args[2]) : Set.of();
@@ -201,9 +206,22 @@ public class ChatServer {
         MessageWriter writer = new MessageWriter(repository);
         writer.start();
 
-        ChatServer server = new ChatServer(port, writer, repository, users, admins);
+        ChatServer server = new ChatServer(port, writer, repository, users, admins, socketFactory());
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "shutdown"));
         server.start();
+    }
+
+    private static SocketFactory socketFactory() throws TlsException {
+        String keystore = System.getProperty(KEYSTORE_PROPERTY);
+        if (keystore == null) {
+            log.warn("no keystore configured, serving in the clear");
+            return new PlainSocketFactory();
+        }
+        String password = System.getenv(KEYSTORE_PASSWORD_VARIABLE);
+        if (password == null) {
+            password = System.getProperty(KEYSTORE_PASSWORD_PROPERTY, "");
+        }
+        return TlsSocketFactory.fromKeystore(keystore, password);
     }
 
     private static Set<String> parseAdmins(String argument) {

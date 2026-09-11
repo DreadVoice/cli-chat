@@ -359,10 +359,11 @@ class ChatServerTest {
             drainer.setDaemon(true);
             drainer.start();
 
+            String bulk = "x".repeat(4000);
             Thread flood = new Thread(() -> {
                 for (int i = 0; running.get() && i < 500_000; i++) {
                     try {
-                        alice.send(new Message(MessageType.PRIVATE, "alice", "sleeper", "flood " + i, 0L));
+                        alice.send(new Message(MessageType.PRIVATE, "alice", "sleeper", bulk, 0L));
                     } catch (ProtocolException e) {
                         return;
                     }
