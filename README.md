@@ -28,10 +28,15 @@ mvn -q compile exec:java -Dexec.mainClass=com.cli.chat.server.ChatServer -Dexec.
 mvn -q compile exec:java -Dexec.mainClass=com.cli.chat.server.ChatServer -Dexec.args="5000 chat.db root,ops"
 ```
 
-Start a client in another terminal (`<host> <port>`, defaults `localhost 5000`):
+Start a client in another terminal. Host and port stay positional and default to
+`localhost 5000`; the TLS flags are covered under [Transport](#transport):
 
 ```bash
 mvn -q compile exec:java -Dexec.mainClass=com.cli.chat.client.ChatClient -Dexec.args="localhost 5000"
+```
+
+```
+usage: ChatClient [host] [port] [--truststore <path>] [--truststore-password <password>] [--insecure]
 ```
 
 The client prompts for a name, then relays anything typed as a chat message.
@@ -53,18 +58,19 @@ faults at `ERROR`.
 ## Architecture
 
 ```
-client/                 common/                server/                db/
-  ChatClient ── TCP ──►  Protocol (JSON)  ──►  ChatServer            Database
-                         Message               ├─ ClientRegistry     MessageWriter ──► SQLite
-                         MessageType           ├─ CommandRegistry    MessageRepository
-                         exception/            ├─ RecentMessages     UserRepository
-                                               ├─ ClientHandler
-                                               └─ PasswordHasher
+client/              common/              net/                server/               db/
+  ChatClient ──────►  Protocol (JSON) ──►  SocketFactory ────►  ChatServer           Database
+                      Message              PlainSocketFactory   ├─ ClientRegistry    MessageWriter ──► SQLite
+                      MessageType          TlsSocketFactory     ├─ CommandRegistry   MessageRepository
+                      exception/                                ├─ RecentMessages    UserRepository
+                                                                ├─ ClientHandler
+                                                                └─ PasswordHasher
 ```
 
 | Package  | Responsibility                                                          |
 |----------|-------------------------------------------------------------------------|
 | `common` | Wire format: the `Message` record, `MessageType`, `Protocol`, exceptions |
+| `net`    | How a socket is made: plain TCP or TLS from a keystore or truststore     |
 | `server` | Accept loop, auth, commands, per-client handlers, online registry, history |
 | `db`     | SQLite access, repositories, the asynchronous write queue                |
 | `client` | Terminal client                                                          |
@@ -98,6 +104,66 @@ disk read. The buffer is warmed from SQLite at start-up, so history survives a r
 `ChatServer.stop()`, registered as a JVM shutdown hook, stops accepting, disconnects
 clients, waits up to 5 s for handlers to finish, then drains the write queue before the
 process exits.
+
+## Transport
+
+Both ends create sockets through `net.SocketFactory`, which returns plain `Socket` and
+`ServerSocket` types, so the TLS implementation substitutes `SSLSocket` and `SSLServerSocket`
+without any call site changing. Without a keystore the server listens in the clear and says so
+at `WARN`.
+
+### Generating a development certificate
+
+`keytool` ships with the JDK. This makes a self-signed certificate valid for `localhost`, puts
+it in a PKCS12 keystore for the server, then exports it into a truststore for clients:
+
+```bash
+keytool -genkeypair -alias chat -keyalg RSA -keysize 2048 -storetype PKCS12 \
+        -keystore keystore.p12 -storepass changeit \
+        -dname "CN=localhost" -ext "SAN=dns:localhost,ip:127.0.0.1" -validity 365
+
+keytool -exportcert -alias chat -keystore keystore.p12 -storepass changeit -file chat.cer
+
+keytool -importcert -noprompt -alias chat -storetype PKCS12 \
+        -keystore truststore.p12 -storepass changeit -file chat.cer
+```
+
+The `SAN` matters: clients check the certificate against the host they dialled, so a
+certificate without a matching name is refused even when it is trusted.
+
+### Running with TLS
+
+The server reads the keystore path from a system property and its password from the
+environment, since anything passed on the command line is visible in the process list:
+
+```bash
+export CHAT_KEYSTORE_PASSWORD=changeit
+mvn -q compile exec:java -Dexec.mainClass=com.cli.chat.server.ChatServer \
+    -Dchat.keystore=keystore.p12 -Dexec.args="5000 chat.db root"
+```
+
+| Setting                       | Where                | Meaning                                  |
+|-------------------------------|----------------------|------------------------------------------|
+| `chat.keystore`               | system property      | keystore path, TLS is off when unset     |
+| `CHAT_KEYSTORE_PASSWORD`      | environment variable | keystore password                        |
+| `chat.keystore.password`      | system property      | fallback when the variable is unset      |
+
+The client opts in with `--truststore`, and takes its password from
+`CHAT_TRUSTSTORE_PASSWORD` when `--truststore-password` is absent:
+
+```bash
+mvn -q compile exec:java -Dexec.mainClass=com.cli.chat.client.ChatClient \
+    -Dexec.args="localhost 5000 --truststore truststore.p12 --truststore-password changeit"
+```
+
+`--insecure` encrypts the connection but checks nothing about the certificate, which is there
+for throwaway certificates during development. It logs a warning every time it is used, and
+it overrides `--truststore`. Do not use it against anything you care about: an attacker in the
+middle can present any certificate and read the whole session.
+
+Connections are negotiated over TLS 1.3 or 1.2 only. A TLS client will not fall back to plain
+text, so a mismatched pair fails to connect rather than quietly sending credentials in the
+clear.
 
 ## Protocol
 
@@ -255,8 +321,10 @@ measures the indices against 200 000 rows (run it manually; it is a `main`, not 
 - [x] **Commands** - a `COMMAND` type, a server-side dispatcher over a `Command` registry,
       and `/help`, `/list`, `/history`, `/whisper`, plus the admin-only `/kick` and
       `/shutdown`. The `USER_LIST` type still answers `/who` alongside `/list`.
-- [ ] **TLS** - `SSLServerSocket` with a configurable keystore, so credentials and message
-      bodies are not sent in the clear.
+- [x] **TLS** - a `SocketFactory` seam with `SSLServerSocket` from a configurable keystore,
+      client truststores with hostname checks, and an `--insecure` fallback for development
+      certificates. The server still listens in the clear when no keystore is configured, and
+      clients are not asked for certificates of their own.
 - [ ] **CLI** - proper argument parsing for both binaries (flags instead of positional
       arguments), a packaged runnable jar, and a real console UI (`ConsoleUI` is currently
       an empty placeholder).
