@@ -20,6 +20,8 @@ import com.cli.chat.db.MessageRepository;
 import com.cli.chat.db.MessageWriter;
 import com.cli.chat.db.SqliteMessageRepository;
 import com.cli.chat.db.SqliteUserRepository;
+import com.cli.chat.net.PlainSocketFactory;
+import com.cli.chat.net.SocketFactory;
 import com.cli.chat.db.UserRepository;
 
 public class ChatServer {
@@ -36,6 +38,7 @@ public class ChatServer {
     private final MessageRepository history;
     private final UserRepository users;
     private final Set<String> admins;
+    private final SocketFactory sockets;
     private final RecentMessages recent = new RecentMessages(CACHE_SIZE);
     private final ClientRegistry registry = new ClientRegistry();
     private final CommandRegistry commands = new CommandRegistry();
@@ -63,11 +66,17 @@ public class ChatServer {
 
     public ChatServer(int port, MessageWriter writer, MessageRepository history, UserRepository users,
                       Set<String> admins) {
+        this(port, writer, history, users, admins, new PlainSocketFactory());
+    }
+
+    public ChatServer(int port, MessageWriter writer, MessageRepository history, UserRepository users,
+                      Set<String> admins, SocketFactory sockets) {
         this.requestedPort = port;
         this.writer = writer;
         this.history = history;
         this.users = users;
         this.admins = admins == null ? Set.of() : Set.copyOf(admins);
+        this.sockets = sockets == null ? new PlainSocketFactory() : sockets;
         commands.register(new HelpCommand());
         commands.register(new HistoryCommand());
         commands.register(new KickCommand());
@@ -106,7 +115,7 @@ public class ChatServer {
 
     public void start() throws IOException {
         warmCache();
-        serverSocket = new ServerSocket(requestedPort);
+        serverSocket = sockets.createServerSocket(requestedPort);
         boundPort = serverSocket.getLocalPort();
         running = true;
         log.info("server listening on port {}", boundPort);

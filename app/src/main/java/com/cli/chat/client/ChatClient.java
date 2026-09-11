@@ -13,6 +13,8 @@ import com.cli.chat.common.Message;
 import com.cli.chat.common.MessageType;
 import com.cli.chat.common.Protocol;
 import com.cli.chat.common.exception.ProtocolException;
+import com.cli.chat.net.PlainSocketFactory;
+import com.cli.chat.net.SocketFactory;
 
 public class ChatClient {
 
@@ -25,7 +27,9 @@ public class ChatClient {
         String host = args.length > 0 ? args[0] : DEFAULT_HOST;
         int port = args.length > 1 ? Integer.parseInt(args[1]) : DEFAULT_PORT;
 
-        try (Socket socket = new Socket(host, port);
+        SocketFactory sockets = new PlainSocketFactory();
+
+        try (Socket socket = sockets.createSocket(host, port);
              BufferedReader in = new BufferedReader(
                      new InputStreamReader(socket.getInputStream()));
              PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
