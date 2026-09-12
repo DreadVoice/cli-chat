@@ -8,6 +8,13 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.jline.reader.EndOfFileException;
+import org.jline.reader.LineReader;
+import org.jline.reader.LineReaderBuilder;
+import org.jline.reader.UserInterruptException;
+import org.jline.terminal.Terminal;
+import org.jline.terminal.TerminalBuilder;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +36,7 @@ public class ChatClient {
     private static final String USAGE =
             "usage: ChatClient [host] [port] [--truststore <path>] [--truststore-password <password>] [--insecure]";
     private static final String TRUSTSTORE_PASSWORD_VARIABLE = "CHAT_TRUSTSTORE_PASSWORD";
+    private static final String PROMPT = "> ";
 
     public static void main(String[] args) throws IOException, TlsException {
         Options options = parse(args);
@@ -43,17 +51,26 @@ public class ChatClient {
              BufferedReader in = new BufferedReader(
                      new InputStreamReader(socket.getInputStream()));
              PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-             BufferedReader console = new BufferedReader(
-                     new InputStreamReader(System.in))) {
+             Terminal terminal = TerminalBuilder.builder().system(true).dumb(true).build()) {
+
+            LineReader console = lineReader(terminal);
 
             String username = handshake(in, out, console);
 
-            Thread reader = new Thread(() -> receiveLoop(in));
+            Thread reader = new Thread(() -> receiveLoop(in, console));
             reader.setDaemon(true);
             reader.start();
 
             sendLoop(console, out, username);
         }
+    }
+
+    static LineReader lineReader(Terminal terminal) {
+        return LineReaderBuilder.builder()
+                .terminal(terminal)
+                .option(LineReader.Option.DISABLE_EVENT_EXPANSION, true)
+                .option(LineReader.Option.AUTO_MENU, false)
+                .build();
     }
 
     static Options parse(String[] args) {
@@ -116,32 +133,40 @@ public class ChatClient {
     }
 
     private static String handshake(BufferedReader in, PrintWriter out,
-                                    BufferedReader console) throws IOException {
-        Message prompt = readMessage(in);           // SYSTEM "Enter your name:"
-        if (prompt != null) render(prompt);
+                                    LineReader console) throws IOException {
+        Message prompt = readMessage(in);
+        if (prompt != null) render(prompt, console);
 
-        String name = console.readLine();
+        String name = readInput(console);
         if (name == null || name.isBlank()) name = "anon";
-        out.println(name);                           //raw
+        out.println(name);
         return name;
     }
 
-    private static void receiveLoop(BufferedReader in) {
+    private static String readInput(LineReader console) {
         try {
-            Message msg;
-            while ((msg = readMessage(in)) != null) {
-                render(msg);
-            }
-        } catch (IOException e) {
-            log.debug("read loop ended", e);
-            System.out.println("Disconnected.");
+            return console.readLine(PROMPT);
+        } catch (UserInterruptException | EndOfFileException e) {
+            return null;
         }
     }
 
-    private static void sendLoop(BufferedReader console, PrintWriter out,
+    private static void receiveLoop(BufferedReader in, LineReader console) {
+        try {
+            Message msg;
+            while ((msg = readMessage(in)) != null) {
+                render(msg, console);
+            }
+        } catch (IOException e) {
+            log.debug("read loop ended", e);
+            console.printAbove("Disconnected.");
+        }
+    }
+
+    private static void sendLoop(LineReader console, PrintWriter out,
                                  String username) throws IOException {
         String line;
-        while ((line = console.readLine()) != null) {
+        while ((line = readInput(console)) != null) {
             if (line.equalsIgnoreCase("/quit")) {
                 out.println(encode(new Message(
                         MessageType.QUIT, username, null, null, System.currentTimeMillis())));
@@ -176,14 +201,17 @@ public class ChatClient {
         }
     }
 
-    private static void render(Message msg) {
-        switch (msg.type()) {
-            case BROADCAST, PRIVATE_DELIVERY ->
-                    System.out.println("[" + msg.sender() + "] " + msg.body());
-            case SYSTEM  -> System.out.println("*** " + msg.body() + " ***");
-            case USER_LIST -> System.out.println("--- online: " + msg.body() + " ---");
-            case ERROR   -> System.out.println("!!! " + msg.body());
-            default      -> System.out.println(msg.body());
-        }
+    private static void render(Message msg, LineReader console) {
+        console.printAbove(line(msg));
+    }
+
+    static String line(Message msg) {
+        return switch (msg.type()) {
+            case BROADCAST, PRIVATE_DELIVERY -> "[" + msg.sender() + "] " + msg.body();
+            case SYSTEM -> "*** " + msg.body() + " ***";
+            case USER_LIST -> "--- online: " + msg.body() + " ---";
+            case ERROR -> "!!! " + msg.body();
+            default -> String.valueOf(msg.body());
+        };
     }
 }
