@@ -36,7 +36,7 @@ mvn -q compile exec:java -Dexec.mainClass=com.cli.chat.client.ChatClient -Dexec.
 ```
 
 ```
-usage: ChatClient [host] [port] [--truststore <path>] [--truststore-password <password>] [--insecure] [--no-history]
+usage: ChatClient [host] [port] [--truststore <path>] [--truststore-password <password>] [--insecure] [--no-history] [--register]
 ```
 
 The client prompts for a name, then relays anything typed as a chat message.
@@ -256,8 +256,8 @@ stored account untouched when it does.
 Passwords are hashed with bcrypt at cost 12 before they reach the database, so a `REGISTER`
 or `LOGIN` costs a deliberate few hundred milliseconds.
 
-The bundled `ChatClient` still sends the raw name line; it does not speak `LOGIN` or
-`REGISTER` yet.
+The bundled `ChatClient` asks for a name and then a password: a password logs in, `--register`
+creates the account first, and an empty password falls back to the raw name line as a guest.
 
 ### Types
 
@@ -359,8 +359,9 @@ measures the indices against 200 000 rows (run it manually; it is a `main`, not 
 - [x] **Auth** - `LOGIN` / `REGISTER` against the `users` table, bcrypt password hashing at
       cost 12, `UsernameTakenException` wired into the handshake, and three failed logins
       closing the socket.
-- [x] **Auth for the client** - the server takes `LOGIN` and `REGISTER` from any client that
-      speaks them, and still accepts the raw name line; `ChatClient` itself has not moved over.
+- [x] **Auth for the client** - `ChatClient` logs in and registers with a masked password
+      prompt, so accounts and the admin commands are reachable from the bundled client; the
+      raw name line still works for guests on names nobody has registered.
 - [x] **Private messaging** - `PRIVATE` to `PRIVATE_DELIVERY` routed through
       `ClientRegistry.find`, echoed to the sender, with offline and unknown targets told
       apart; `MessageRepository.recentFor` does not back per-user history yet.

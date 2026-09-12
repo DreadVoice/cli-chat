@@ -38,11 +38,15 @@ public class ChatClient {
     private static final String DEFAULT_HOST = "localhost";
     private static final int DEFAULT_PORT = 5000;
     private static final String USAGE = "usage: ChatClient [host] [port] [--truststore <path>] "
-            + "[--truststore-password <password>] [--insecure] [--no-history]";
+            + "[--truststore-password <password>] [--insecure] [--no-history] [--register]";
     private static final String HISTORY_FILE = ".cli-chat-history";
     private static final int HISTORY_SIZE = 500;
     private static final String TRUSTSTORE_PASSWORD_VARIABLE = "CHAT_TRUSTSTORE_PASSWORD";
     private static final String PROMPT = "> ";
+    private static final String NAME_PROMPT = "name> ";
+    private static final String PASSWORD_PROMPT = "password (blank to join as a guest)> ";
+    private static final String REGISTER_PASSWORD_PROMPT = "new password> ";
+    private static final char MASK = '*';
     private static final AttributedStyle SYSTEM_STYLE = AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN);
     private static final AttributedStyle ROSTER_STYLE = AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN);
     private static final AttributedStyle ERROR_STYLE = AttributedStyle.DEFAULT.foreground(AttributedStyle.RED);
@@ -68,7 +72,7 @@ public class ChatClient {
             LineReader console = lineReader(terminal, options.historyFile());
             StatusBar statusBar = new StatusBar(terminal);
 
-            String username = handshake(in, out, console);
+            String username = handshake(in, out, console, options.register);
             if (username == null) {
                 return;
             }
@@ -115,6 +119,7 @@ public class ChatClient {
             switch (args[i]) {
                 case "--insecure" -> options.insecure = true;
                 case "--no-history" -> options.noHistory = true;
+                case "--register" -> options.register = true;
                 case "--truststore" -> {
                     if (++i == args.length) return null;
                     options.truststore = args[i];
@@ -166,32 +171,53 @@ public class ChatClient {
         String truststorePassword;
         boolean insecure;
         boolean noHistory;
+        boolean register;
 
         Path historyFile() {
             return noHistory ? null : Path.of(System.getProperty("user.home"), HISTORY_FILE);
         }
     }
 
-    private static String handshake(BufferedReader in, PrintWriter out,
-                                    LineReader console) throws IOException {
+    static String handshake(BufferedReader in, PrintWriter out,
+                            LineReader console, boolean register) throws IOException {
         Message prompt = readMessage(in);
         if (prompt != null) render(prompt, console);
 
         while (true) {
             String name;
+            String password;
             try {
-                name = console.readLine(PROMPT);
+                name = console.readLine(NAME_PROMPT);
+                if (name.isBlank()) {
+                    name = "anon";
+                }
+                password = console.readLine(register ? REGISTER_PASSWORD_PROMPT : PASSWORD_PROMPT, MASK);
             } catch (UserInterruptException cancelled) {
                 continue;
             } catch (EndOfFileException leaving) {
                 return null;
             }
-            if (name.isBlank()) {
-                name = "anon";
+
+            if (!register && password.isBlank()) {
+                out.println(name);
+                return name;
             }
-            out.println(name);
-            return name;
+
+            out.println(encode(credentials(register, name, password)));
+            Message reply = readMessage(in);
+            if (reply == null) {
+                return null;
+            }
+            render(reply, console);
+            if (reply.type() == MessageType.LOGIN_OK) {
+                return name;
+            }
         }
+    }
+
+    static Message credentials(boolean register, String name, String password) {
+        return new Message(register ? MessageType.REGISTER : MessageType.LOGIN,
+                name, null, password, System.currentTimeMillis());
     }
 
     private static void receiveLoop(BufferedReader in, LineReader console, PrintWriter out,
