@@ -3,12 +3,10 @@ package com.cli.chat.server;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Arrays;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,8 +28,6 @@ public class ChatServer {
 
     private static final Logger log = LoggerFactory.getLogger(ChatServer.class);
 
-    private static final int DEFAULT_PORT = 5000;
-    private static final String DEFAULT_DATABASE = "chat.db";
     private static final String KEYSTORE_PROPERTY = "chat.keystore";
     private static final String KEYSTORE_PASSWORD_PROPERTY = "chat.keystore.password";
     private static final String KEYSTORE_PASSWORD_VARIABLE = "CHAT_KEYSTORE_PASSWORD";
@@ -163,11 +159,19 @@ public class ChatServer {
     }
 
     public static void main(String[] args) throws IOException, StorageException, TlsException {
-        int port = args.length > 0 ? Integer.parseInt(args[0]) : DEFAULT_PORT;
-        String databasePath = args.length > 1 ? args[1] : DEFAULT_DATABASE;
-        Set<String> admins = args.length > 2 ? parseAdmins(args[2]) : Set.of();
+        ServerOptions options = ServerOptions.parse(args);
+        if (options == null) {
+            System.out.println(ServerOptions.USAGE);
+            return;
+        }
 
-        Database database = Database.file(databasePath);
+        ChatServer server = new ChatServer(configure(options));
+        Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "shutdown"));
+        server.start();
+    }
+
+    static ServerConfig configure(ServerOptions options) throws StorageException, TlsException {
+        Database database = Database.file(options.database());
         database.initialise();
 
         SqliteMessageRepository repository = new SqliteMessageRepository(database);
@@ -175,32 +179,32 @@ public class ChatServer {
         MessageWriter writer = new MessageWriter(repository);
         writer.start();
 
-        ChatServer server = new ChatServer(ServerConfig.onPort(port)
+        return ServerConfig.onPort(options.port())
                 .withStorage(writer, repository)
                 .withUsers(users)
-                .withAdmins(admins)
-                .withSockets(socketFactory()));
-        Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "shutdown"));
-        server.start();
+                .withAdmins(options.admins())
+                .withSockets(socketFactory(options));
     }
 
-    private static SocketFactory socketFactory() throws TlsException {
-        String keystore = System.getProperty(KEYSTORE_PROPERTY);
+    private static SocketFactory socketFactory(ServerOptions options) throws TlsException {
+        String keystore = options.keystore() != null
+                ? options.keystore()
+                : System.getProperty(KEYSTORE_PROPERTY);
         if (keystore == null) {
             log.warn("no keystore configured, serving in the clear");
             return new PlainSocketFactory();
         }
-        String password = System.getenv(KEYSTORE_PASSWORD_VARIABLE);
-        if (password == null) {
-            password = System.getProperty(KEYSTORE_PASSWORD_PROPERTY, "");
-        }
-        return TlsSocketFactory.fromKeystore(keystore, password);
+        return TlsSocketFactory.fromKeystore(keystore, keystorePassword(options));
     }
 
-    private static Set<String> parseAdmins(String argument) {
-        return Arrays.stream(argument.split(","))
-                .map(String::strip)
-                .filter(name -> !name.isBlank())
-                .collect(Collectors.toUnmodifiableSet());
+    static String keystorePassword(ServerOptions options) {
+        if (options.keystorePassword() != null) {
+            return options.keystorePassword();
+        }
+        String fromEnvironment = System.getenv(KEYSTORE_PASSWORD_VARIABLE);
+        if (fromEnvironment != null) {
+            return fromEnvironment;
+        }
+        return System.getProperty(KEYSTORE_PASSWORD_PROPERTY, "");
     }
 }
