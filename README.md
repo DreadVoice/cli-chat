@@ -36,7 +36,7 @@ mvn -q compile exec:java -Dexec.mainClass=com.cli.chat.client.ChatClient -Dexec.
 ```
 
 ```
-usage: ChatClient [host] [port] [--truststore <path>] [--truststore-password <password>] [--insecure]
+usage: ChatClient [host] [port] [--truststore <path>] [--truststore-password <password>] [--insecure] [--no-history]
 ```
 
 The client prompts for a name, then relays anything typed as a chat message.
@@ -48,7 +48,8 @@ The client prompts for a name, then relays anything typed as a chat message.
 | `/quit`  | leave and close the connection            |
 
 These three are all the bundled client can send. Accounts, private messages and the server
-commands below are reachable from any client that speaks the JSON protocol directly.
+commands below are reachable from any client that speaks the JSON protocol directly. The
+terminal it gives you is described under [CLI frontend](#cli-frontend).
 
 The server logs to the console via SLF4J/Logback; see
 [app/src/main/resources/logback.xml](app/src/main/resources/logback.xml) to change levels.
@@ -60,7 +61,7 @@ faults at `ERROR`.
 ```
 client/              common/              net/                server/               db/
   ChatClient ──────►  Protocol (JSON) ──►  SocketFactory ────►  ChatServer           Database
-                      Message              PlainSocketFactory   ├─ ClientRegistry    MessageWriter ──► SQLite
+  StatusBar           Message              PlainSocketFactory   ├─ ClientRegistry    MessageWriter ──► SQLite
                       MessageType          TlsSocketFactory     ├─ CommandRegistry   MessageRepository
                       exception/                                ├─ RecentMessages    UserRepository
                                                                 ├─ ClientHandler
@@ -73,7 +74,7 @@ client/              common/              net/                server/           
 | `net`    | How a socket is made: plain TCP or TLS from a keystore or truststore     |
 | `server` | Accept loop, auth, commands, per-client handlers, online registry, history |
 | `db`     | SQLite access, repositories, the asynchronous write queue                |
-| `client` | Terminal client                                                          |
+| `client` | Terminal client: JLine reader, colour, history, status bar                |
 
 ### Threading model
 
@@ -164,6 +165,51 @@ middle can present any certificate and read the whole session.
 Connections are negotiated over TLS 1.3 or 1.2 only. A TLS client will not fall back to plain
 text, so a mismatched pair fails to connect rather than quietly sending credentials in the
 clear.
+
+## CLI frontend
+
+The client reads through a [JLine](https://github.com/jline/jline3) `LineReader`, so the input
+line behaves the way a shell does: arrow keys move within it, the history is recallable, and a
+message arriving while you type is printed above the prompt with what you had typed redrawn
+underneath, untouched.
+
+### Keys
+
+| Key      | Effect                                                     |
+|----------|------------------------------------------------------------|
+| up, down | walk back and forward through what you have typed          |
+| left, right, home, end | move inside the line being edited            |
+| `Ctrl-C` | throw away the line being typed and start a fresh one      |
+| `Ctrl-D` | leave, sending `QUIT` first, the same as `/quit`           |
+
+### History
+
+What you type is kept in `~/.cli-chat-history`, capped at 500 entries, so it survives between
+sessions. Bear in mind that this is a chat client, so the file holds messages, not only
+commands. Two ways out: start a line with a space and it is never recorded, or run the client
+with `--no-history` and nothing is written to disk at all. Recall inside the session works
+either way.
+
+### Colour
+
+Colour comes from JLine attributed strings, so a terminal that cannot do colour is sent plain
+text instead, and nothing about the wording changes.
+
+| Message            | Look                        |
+|--------------------|-----------------------------|
+| chat from someone  | the `[sender]` prefix bold  |
+| private delivery   | the `[sender]` prefix magenta and bold |
+| notices            | cyan                        |
+| roster, login accepted | green                   |
+| errors, login refused | red                      |
+
+### Status bar
+
+The bottom line shows the connection state, the name you are signed in as, and how many people
+are online, for example `connected  alice  3 online`. The count comes from the roster: the
+client asks for one when it joins and again whenever somebody joins or leaves, and those
+replies update the bar without printing a roster line of their own, so a `/who` you typed is
+still the only roster you see. A terminal without cursor addressing simply gets no bar.
 
 ## Protocol
 
@@ -325,6 +371,8 @@ measures the indices against 200 000 rows (run it manually; it is a `main`, not 
       client truststores with hostname checks, and an `--insecure` fallback for development
       certificates. The server still listens in the clear when no keystore is configured, and
       clients are not asked for certificates of their own.
-- [ ] **CLI** - proper argument parsing for both binaries (flags instead of positional
-      arguments), a packaged runnable jar, and a real console UI (`ConsoleUI` is currently
-      an empty placeholder).
+- [x] **CLI** - a JLine frontend for the client: line editing, history across sessions,
+      `Ctrl-C` and `Ctrl-D` handling, colour by message kind, and a status bar. The client
+      takes flags alongside its positional host and port; the server still reads positional
+      arguments and system properties, there is no packaged runnable jar, and the empty
+      `ConsoleUI` placeholder is still unused.
