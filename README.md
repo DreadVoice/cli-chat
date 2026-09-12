@@ -373,5 +373,5 @@ measures the indices against 200 000 rows (run it manually; it is a `main`, not 
       clients are not asked for certificates of their own.
 - [x] **CLI** - a JLine frontend for the client: line editing, history across sessions,
       `Ctrl-C` and `Ctrl-D` handling, colour by message kind, and a status bar. The client
-      takes flags alongside its positional host and port, and so does the server; what is
-      missing is a packaged runnable jar.
+      takes flags alongside its positional host and port, and so does the server, which is
+      packaged with both halves into one runnable jar.
