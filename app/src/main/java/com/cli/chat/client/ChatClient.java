@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,8 +37,10 @@ public class ChatClient {
 
     private static final String DEFAULT_HOST = "localhost";
     private static final int DEFAULT_PORT = 5000;
-    private static final String USAGE =
-            "usage: ChatClient [host] [port] [--truststore <path>] [--truststore-password <password>] [--insecure]";
+    private static final String USAGE = "usage: ChatClient [host] [port] [--truststore <path>] "
+            + "[--truststore-password <password>] [--insecure] [--no-history]";
+    private static final String HISTORY_FILE = ".cli-chat-history";
+    private static final int HISTORY_SIZE = 500;
     private static final String TRUSTSTORE_PASSWORD_VARIABLE = "CHAT_TRUSTSTORE_PASSWORD";
     private static final String PROMPT = "> ";
     private static final AttributedStyle SYSTEM_STYLE = AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN);
@@ -62,24 +65,43 @@ public class ChatClient {
              PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
              Terminal terminal = TerminalBuilder.builder().system(true).dumb(true).build()) {
 
-            LineReader console = lineReader(terminal);
+            LineReader console = lineReader(terminal, options.historyFile());
 
             String username = handshake(in, out, console);
+            if (username == null) {
+                return;
+            }
 
             Thread reader = new Thread(() -> receiveLoop(in, console));
             reader.setDaemon(true);
             reader.start();
 
-            sendLoop(console, out, username);
+            sendLoop(() -> console.readLine(PROMPT), out, username);
+            saveHistory(console);
         }
     }
 
-    static LineReader lineReader(Terminal terminal) {
-        return LineReaderBuilder.builder()
+    static LineReader lineReader(Terminal terminal, Path history) {
+        LineReaderBuilder builder = LineReaderBuilder.builder()
                 .terminal(terminal)
                 .option(LineReader.Option.DISABLE_EVENT_EXPANSION, true)
                 .option(LineReader.Option.AUTO_MENU, false)
-                .build();
+                .option(LineReader.Option.HISTORY_IGNORE_DUPS, true)
+                .option(LineReader.Option.HISTORY_IGNORE_SPACE, true)
+                .variable(LineReader.HISTORY_SIZE, HISTORY_SIZE)
+                .variable(LineReader.HISTORY_FILE_SIZE, HISTORY_SIZE);
+        if (history != null) {
+            builder.variable(LineReader.HISTORY_FILE, history);
+        }
+        return builder.build();
+    }
+
+    private static void saveHistory(LineReader console) {
+        try {
+            console.getHistory().save();
+        } catch (IOException e) {
+            log.debug("could not save the history", e);
+        }
     }
 
     static Options parse(String[] args) {
@@ -89,6 +111,7 @@ public class ChatClient {
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--insecure" -> options.insecure = true;
+                case "--no-history" -> options.noHistory = true;
                 case "--truststore" -> {
                     if (++i == args.length) return null;
                     options.truststore = args[i];
@@ -139,6 +162,11 @@ public class ChatClient {
         String truststore;
         String truststorePassword;
         boolean insecure;
+        boolean noHistory;
+
+        Path historyFile() {
+            return noHistory ? null : Path.of(System.getProperty("user.home"), HISTORY_FILE);
+        }
     }
 
     private static String handshake(BufferedReader in, PrintWriter out,
@@ -146,17 +174,20 @@ public class ChatClient {
         Message prompt = readMessage(in);
         if (prompt != null) render(prompt, console);
 
-        String name = readInput(console);
-        if (name == null || name.isBlank()) name = "anon";
-        out.println(name);
-        return name;
-    }
-
-    private static String readInput(LineReader console) {
-        try {
-            return console.readLine(PROMPT);
-        } catch (UserInterruptException | EndOfFileException e) {
-            return null;
+        while (true) {
+            String name;
+            try {
+                name = console.readLine(PROMPT);
+            } catch (UserInterruptException cancelled) {
+                continue;
+            } catch (EndOfFileException leaving) {
+                return null;
+            }
+            if (name.isBlank()) {
+                name = "anon";
+            }
+            out.println(name);
+            return name;
         }
     }
 
@@ -172,13 +203,17 @@ public class ChatClient {
         }
     }
 
-    private static void sendLoop(LineReader console, PrintWriter out,
-                                 String username) throws IOException {
-        String line;
-        while ((line = readInput(console)) != null) {
+    static void sendLoop(LineSource console, PrintWriter out, String username) {
+        while (true) {
+            String line;
+            try {
+                line = console.readLine();
+            } catch (UserInterruptException cancelled) {
+                continue;
+            } catch (EndOfFileException leaving) {
+                break;
+            }
             if (line.equalsIgnoreCase("/quit")) {
-                out.println(encode(new Message(
-                        MessageType.QUIT, username, null, null, System.currentTimeMillis())));
                 break;
             }
             if (line.equalsIgnoreCase("/who")) {
@@ -189,6 +224,13 @@ public class ChatClient {
             out.println(encode(new Message(
                     MessageType.CHAT, username, null, line, System.currentTimeMillis())));
         }
+        out.println(encode(new Message(
+                MessageType.QUIT, username, null, null, System.currentTimeMillis())));
+    }
+
+    @FunctionalInterface
+    interface LineSource {
+        String readLine();
     }
 
     private static Message readMessage(BufferedReader in) throws IOException {

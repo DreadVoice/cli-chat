@@ -49,6 +49,13 @@ class ChatClientOptionsTest {
     }
 
     @Test
+    void historyIsKeptInTheHomeDirectoryUnlessItIsTurnedOff() {
+        assertTrue(ChatClient.parse(new String[0]).historyFile().toString().endsWith(".cli-chat-history"));
+        assertNull(ChatClient.parse(new String[] {"--no-history"}).historyFile(),
+                "--no-history should leave nothing on disk");
+    }
+
+    @Test
     void aFlagWithoutItsValueIsRejected() {
         assertNull(ChatClient.parse(new String[] {"--truststore"}));
         assertNull(ChatClient.parse(new String[] {"localhost", "5000", "--truststore-password"}));

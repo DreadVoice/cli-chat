@@ -10,6 +10,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.concurrent.ExecutorService;
@@ -24,6 +26,7 @@ import org.jline.terminal.Size;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import com.cli.chat.common.Message;
 import com.cli.chat.common.MessageType;
@@ -31,6 +34,57 @@ import com.cli.chat.common.MessageType;
 class ChatClientConsoleTest {
 
     private static final Pattern ANSI = Pattern.compile("\\u001B\\[[;\\d]*[ -/]*[@-~]");
+
+    private static LineReader readerOver(String typed, Path history) throws Exception {
+        PipedOutputStream typing = new PipedOutputStream();
+        InputStream in = new PipedInputStream(typing, 8192);
+        typing.write(typed.getBytes(UTF_8));
+        typing.flush();
+        Terminal terminal = TerminalBuilder.builder()
+                .streams(in, new ByteArrayOutputStream())
+                .dumb(true)
+                .build();
+        return ChatClient.lineReader(terminal, history);
+    }
+
+    @Test
+    void whatWasTypedIsKeptForTheNextSession(@TempDir Path directory) throws Exception {
+        Path history = directory.resolve("history");
+        LineReader console = readerOver("first line\nsecond line\n", history);
+
+        console.readLine("> ");
+        console.readLine("> ");
+        console.getHistory().save();
+
+        String saved = Files.readString(history);
+        assertTrue(saved.contains("first line"), "history should survive the session");
+        assertTrue(saved.contains("second line"));
+    }
+
+    @Test
+    void aLineStartingWithASpaceIsNotRemembered(@TempDir Path directory) throws Exception {
+        Path history = directory.resolve("history");
+        LineReader console = readerOver(" a secret\nremember me\n", history);
+
+        console.readLine("> ");
+        console.readLine("> ");
+        console.getHistory().save();
+
+        String saved = Files.readString(history);
+        assertFalse(saved.contains("a secret"), "a leading space keeps a line out of the history");
+        assertTrue(saved.contains("remember me"));
+    }
+
+    @Test
+    void withoutAHistoryFileNothingIsWritten(@TempDir Path directory) throws Exception {
+        LineReader console = readerOver("said once\n", null);
+
+        console.readLine("> ");
+        console.getHistory().save();
+
+        assertEquals(1, console.getHistory().size(), "the session still recalls its own lines");
+        assertTrue(directory.toFile().list().length == 0, "nothing should be written to disk");
+    }
 
     private static LineReader readerOver(String typed) throws Exception {
         PipedOutputStream typing = new PipedOutputStream();
@@ -44,7 +98,7 @@ class ChatClientConsoleTest {
                 .streams(in, new ByteArrayOutputStream())
                 .dumb(true)
                 .build();
-        return ChatClient.lineReader(terminal);
+        return ChatClient.lineReader(terminal, null);
     }
 
     @Test
@@ -73,7 +127,7 @@ class ChatClientConsoleTest {
                 .type("xterm")
                 .build();
         terminal.setSize(new Size(80, 24));
-        LineReader console = ChatClient.lineReader(terminal);
+        LineReader console = ChatClient.lineReader(terminal, null);
 
         ExecutorService pool = Executors.newSingleThreadExecutor();
         Future<String> typed = pool.submit(() -> console.readLine("> "));
@@ -115,7 +169,7 @@ class ChatClientConsoleTest {
                 .build();
         terminal.setSize(new Size(80, 24));
 
-        ChatClient.render(Message.system("bob joined"), ChatClient.lineReader(terminal));
+        ChatClient.render(Message.system("bob joined"), ChatClient.lineReader(terminal, null));
 
         waitFor(() -> screen.toString(UTF_8).contains("*** bob joined ***"),
                 "a message with nobody typing should still reach the screen");
