@@ -374,5 +374,4 @@ measures the indices against 200 000 rows (run it manually; it is a `main`, not 
 - [x] **CLI** - a JLine frontend for the client: line editing, history across sessions,
       `Ctrl-C` and `Ctrl-D` handling, colour by message kind, and a status bar. The client
       takes flags alongside its positional host and port; the server still reads positional
-      arguments and system properties, there is no packaged runnable jar, and the empty
-      `ConsoleUI` placeholder is still unused.
+      arguments and system properties, and there is no packaged runnable jar.
