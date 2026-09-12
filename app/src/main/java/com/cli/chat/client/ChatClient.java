@@ -66,13 +66,16 @@ public class ChatClient {
              Terminal terminal = TerminalBuilder.builder().system(true).dumb(true).build()) {
 
             LineReader console = lineReader(terminal, options.historyFile());
+            StatusBar statusBar = new StatusBar(terminal);
 
             String username = handshake(in, out, console);
             if (username == null) {
                 return;
             }
+            statusBar.connected(username);
+            requestRoster(out, username, statusBar);
 
-            Thread reader = new Thread(() -> receiveLoop(in, console));
+            Thread reader = new Thread(() -> receiveLoop(in, console, out, username, statusBar));
             reader.setDaemon(true);
             reader.start();
 
@@ -191,16 +194,41 @@ public class ChatClient {
         }
     }
 
-    private static void receiveLoop(BufferedReader in, LineReader console) {
+    private static void receiveLoop(BufferedReader in, LineReader console, PrintWriter out,
+                                    String username, StatusBar statusBar) {
         try {
             Message msg;
             while ((msg = readMessage(in)) != null) {
-                render(msg, console);
+                handleIncoming(msg, console, out, username, statusBar);
             }
         } catch (IOException e) {
             log.debug("read loop ended", e);
             console.printAbove("Disconnected.");
+        } finally {
+            statusBar.disconnected();
         }
+    }
+
+    private static void handleIncoming(Message msg, LineReader console, PrintWriter out,
+                                       String username, StatusBar statusBar) {
+        if (msg.type() == MessageType.USER_LIST) {
+            statusBar.online(StatusBar.count(msg.body()));
+            if (statusBar.consumeRefresh()) {
+                return;
+            }
+            render(msg, console);
+            return;
+        }
+        render(msg, console);
+        if (msg.type() == MessageType.SYSTEM) {
+            requestRoster(out, username, statusBar);
+        }
+    }
+
+    private static void requestRoster(PrintWriter out, String username, StatusBar statusBar) {
+        statusBar.refreshRequested();
+        out.println(encode(new Message(
+                MessageType.USER_LIST, username, null, null, System.currentTimeMillis())));
     }
 
     static void sendLoop(LineSource console, PrintWriter out, String username) {
