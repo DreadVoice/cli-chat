@@ -201,7 +201,7 @@ public class ChatClient {
         }
     }
 
-    private static void render(Message msg, LineReader console) {
+    static void render(Message msg, LineReader console) {
         console.printAbove(line(msg));
     }
 
