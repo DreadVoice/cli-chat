@@ -40,7 +40,7 @@ class ChatHistoryTest {
         writer = new MessageWriter(messages);
         writer.start();
 
-        server = new ChatServer(0, writer, messages);
+        server = new ChatServer(ServerConfig.onPort(0).withStorage(writer, messages));
         Thread thread = new Thread(() -> {
             try {
                 server.start();
@@ -166,7 +166,7 @@ class ChatHistoryTest {
 
     @Test
     void aServerWithoutHistoryStillAcceptsClients() throws Exception {
-        ChatServer plain = new ChatServer(0);
+        ChatServer plain = new ChatServer(ServerConfig.onPort(0));
         Thread thread = new Thread(() -> {
             try {
                 plain.start();
@@ -199,7 +199,7 @@ class ChatHistoryTest {
                 new Message(MessageType.BROADCAST, "alice", null, "from before", 1000L),
                 new Message(MessageType.BROADCAST, "bob", null, "also before", 2000L)));
 
-        ChatServer restarted = new ChatServer(0, writer, messages);
+        ChatServer restarted = new ChatServer(ServerConfig.onPort(0).withStorage(writer, messages));
         Thread thread = new Thread(() -> {
             try {
                 restarted.start();

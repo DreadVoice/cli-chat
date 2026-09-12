@@ -35,7 +35,7 @@ class PrivateMessageTest {
         users = new SqliteUserRepository(database.database());
         users.create("bob", PasswordHasher.hash("s3cret"));
 
-        server = new ChatServer(0, null, null, users);
+        server = new ChatServer(ServerConfig.onPort(0).withUsers(users));
         Thread thread = new Thread(() -> {
             try {
                 server.start();

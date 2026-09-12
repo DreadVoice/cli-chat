@@ -21,10 +21,10 @@ import com.cli.chat.db.MessageRepository;
 import com.cli.chat.db.MessageWriter;
 import com.cli.chat.db.SqliteMessageRepository;
 import com.cli.chat.db.SqliteUserRepository;
+import com.cli.chat.db.UserRepository;
 import com.cli.chat.net.PlainSocketFactory;
 import com.cli.chat.net.SocketFactory;
 import com.cli.chat.net.TlsSocketFactory;
-import com.cli.chat.db.UserRepository;
 
 public class ChatServer {
 
@@ -38,12 +38,7 @@ public class ChatServer {
     private static final long POOL_TIMEOUT_SECONDS = 5;
     private static final int CACHE_SIZE = 100;
 
-    private final int requestedPort;
-    private final MessageWriter writer;
-    private final MessageRepository history;
-    private final UserRepository users;
-    private final Set<String> admins;
-    private final SocketFactory sockets;
+    private final ServerConfig config;
     private final RecentMessages recent = new RecentMessages(CACHE_SIZE);
     private final ClientRegistry registry = new ClientRegistry();
     private final CommandRegistry commands = new CommandRegistry();
@@ -53,35 +48,8 @@ public class ChatServer {
     private volatile boolean running;
     private int boundPort;
 
-    public ChatServer(int port) {
-        this(port, null, null, null);
-    }
-
-    public ChatServer(int port, MessageWriter writer) {
-        this(port, writer, null, null);
-    }
-
-    public ChatServer(int port, MessageWriter writer, MessageRepository history) {
-        this(port, writer, history, null);
-    }
-
-    public ChatServer(int port, MessageWriter writer, MessageRepository history, UserRepository users) {
-        this(port, writer, history, users, Set.of());
-    }
-
-    public ChatServer(int port, MessageWriter writer, MessageRepository history, UserRepository users,
-                      Set<String> admins) {
-        this(port, writer, history, users, admins, new PlainSocketFactory());
-    }
-
-    public ChatServer(int port, MessageWriter writer, MessageRepository history, UserRepository users,
-                      Set<String> admins, SocketFactory sockets) {
-        this.requestedPort = port;
-        this.writer = writer;
-        this.history = history;
-        this.users = users;
-        this.admins = admins == null ? Set.of() : Set.copyOf(admins);
-        this.sockets = sockets == null ? new PlainSocketFactory() : sockets;
+    public ChatServer(ServerConfig config) {
+        this.config = config;
         commands.register(new HelpCommand());
         commands.register(new HistoryCommand());
         commands.register(new KickCommand());
@@ -91,15 +59,15 @@ public class ChatServer {
     }
 
     MessageWriter writer() {
-        return writer;
+        return config.writer();
     }
 
     MessageRepository history() {
-        return history;
+        return config.history();
     }
 
     UserRepository users() {
-        return users;
+        return config.users();
     }
 
     RecentMessages recent() {
@@ -115,12 +83,12 @@ public class ChatServer {
     }
 
     boolean isAdmin(String username) {
-        return admins.contains(username);
+        return config.isAdmin(username);
     }
 
     public void start() throws IOException {
         warmCache();
-        serverSocket = sockets.createServerSocket(requestedPort);
+        serverSocket = config.sockets().createServerSocket(config.port());
         boundPort = serverSocket.getLocalPort();
         running = true;
         log.info("server listening on port {}", boundPort);
@@ -137,6 +105,7 @@ public class ChatServer {
     }
 
     private void warmCache() {
+        MessageRepository history = config.history();
         if (history == null) {
             return;
         }
@@ -162,8 +131,8 @@ public class ChatServer {
         }
         registry.disconnectAll();
         shutdownPool();
-        if (writer != null) {
-            writer.close();
+        if (config.writer() != null) {
+            config.writer().close();
         }
         log.info("server stopped");
     }
@@ -206,7 +175,11 @@ public class ChatServer {
         MessageWriter writer = new MessageWriter(repository);
         writer.start();
 
-        ChatServer server = new ChatServer(port, writer, repository, users, admins, socketFactory());
+        ChatServer server = new ChatServer(ServerConfig.onPort(port)
+                .withStorage(writer, repository)
+                .withUsers(users)
+                .withAdmins(admins)
+                .withSockets(socketFactory()));
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "shutdown"));
         server.start();
     }

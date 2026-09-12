@@ -28,7 +28,7 @@ class CommandsTest {
 
     @BeforeEach
     void startServer() throws Exception {
-        server = new ChatServer(0);
+        server = new ChatServer(ServerConfig.onPort(0));
         Thread thread = new Thread(() -> {
             try {
                 server.start();

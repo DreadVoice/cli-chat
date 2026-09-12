@@ -35,7 +35,7 @@ class ServerTransportTest {
     }
 
     private void startServer() throws Exception {
-        server = new ChatServer(0, null, null, null, Set.of(), sockets);
+        server = new ChatServer(ServerConfig.onPort(0).withSockets(sockets));
         Thread thread = new Thread(() -> {
             try {
                 server.start();

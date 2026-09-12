@@ -38,7 +38,7 @@ class ChatServerShutdownTest {
         writer = new MessageWriter(messages);
         writer.start();
 
-        server = new ChatServer(0, writer);
+        server = new ChatServer(ServerConfig.onPort(0).withStorage(writer, null));
         serverThread = new Thread(() -> {
             try {
                 server.start();
@@ -120,7 +120,7 @@ class ChatServerShutdownTest {
 
     @Test
     void stopWithoutAWriterStillShutsDown() throws Exception {
-        ChatServer plain = new ChatServer(0);
+        ChatServer plain = new ChatServer(ServerConfig.onPort(0));
         Thread thread = new Thread(() -> {
             try {
                 plain.start();
@@ -142,6 +142,6 @@ class ChatServerShutdownTest {
 
     @Test
     void aFreshServerCanBeStoppedBeforeItStarts() throws StorageException {
-        new ChatServer(0).stop();
+        new ChatServer(ServerConfig.onPort(0)).stop();
     }
 }

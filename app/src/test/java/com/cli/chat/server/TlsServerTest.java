@@ -41,8 +41,8 @@ class TlsServerTest {
 
     @BeforeEach
     void startServer() throws Exception {
-        server = new ChatServer(0, null, null, null, Set.of(),
-                TlsSocketFactory.fromKeystore(keystore.path(), keystore.password()));
+        server = new ChatServer(ServerConfig.onPort(0)
+                .withSockets(TlsSocketFactory.fromKeystore(keystore.path(), keystore.password())));
         Thread thread = new Thread(() -> {
             try {
                 server.start();

@@ -39,7 +39,7 @@ class AdminCommandsTest {
         users = new SqliteUserRepository(database.database());
         users.create("root", PasswordHasher.hash(PASSWORD));
 
-        server = new ChatServer(0, null, null, users, Set.of("root"));
+        server = new ChatServer(ServerConfig.onPort(0).withUsers(users).withAdmins(Set.of("root")));
         Thread thread = new Thread(() -> {
             try {
                 server.start();

@@ -36,7 +36,7 @@ class LoginTest {
         users = new SqliteUserRepository(database.database());
         users.create("alice", PasswordHasher.hash(PASSWORD));
 
-        server = new ChatServer(0, null, null, users);
+        server = new ChatServer(ServerConfig.onPort(0).withUsers(users));
         Thread thread = new Thread(() -> {
             try {
                 server.start();
@@ -280,7 +280,7 @@ class LoginTest {
 
     @Test
     void loggingInOnAServerWithoutAUserStoreFails() throws Exception {
-        ChatServer plain = new ChatServer(0);
+        ChatServer plain = new ChatServer(ServerConfig.onPort(0));
         Thread thread = new Thread(() -> {
             try {
                 plain.start();

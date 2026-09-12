@@ -24,6 +24,7 @@ import com.cli.chat.common.MessageType;
 import com.cli.chat.common.Protocol;
 import com.cli.chat.common.exception.TlsException;
 import com.cli.chat.server.ChatServer;
+import com.cli.chat.server.ServerConfig;
 
 class TlsIntegrationTest {
 
@@ -52,8 +53,8 @@ class TlsIntegrationTest {
     }
 
     private int startServer(TestKeystore certificates) throws Exception {
-        server = new ChatServer(0, null, null, null, Set.of(),
-                TlsSocketFactory.fromKeystore(certificates.path(), certificates.password()));
+        server = new ChatServer(ServerConfig.onPort(0)
+                .withSockets(TlsSocketFactory.fromKeystore(certificates.path(), certificates.password())));
         Thread thread = new Thread(() -> {
             try {
                 server.start();

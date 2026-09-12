@@ -39,7 +39,7 @@ class RegistrationTest {
         database = TempDatabase.create();
         users = new SqliteUserRepository(database.database());
 
-        server = new ChatServer(0, null, null, users);
+        server = new ChatServer(ServerConfig.onPort(0).withUsers(users));
         Thread thread = new Thread(() -> {
             try {
                 server.start();
@@ -216,7 +216,7 @@ class RegistrationTest {
 
     @Test
     void registeringOnAServerWithoutAUserStoreFails() throws Exception {
-        ChatServer plain = new ChatServer(0);
+        ChatServer plain = new ChatServer(ServerConfig.onPort(0));
         Thread thread = new Thread(() -> {
             try {
                 plain.start();
