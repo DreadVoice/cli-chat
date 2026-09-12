@@ -14,6 +14,9 @@ import org.jline.reader.LineReaderBuilder;
 import org.jline.reader.UserInterruptException;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
+import org.jline.utils.AttributedString;
+import org.jline.utils.AttributedStringBuilder;
+import org.jline.utils.AttributedStyle;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +40,12 @@ public class ChatClient {
             "usage: ChatClient [host] [port] [--truststore <path>] [--truststore-password <password>] [--insecure]";
     private static final String TRUSTSTORE_PASSWORD_VARIABLE = "CHAT_TRUSTSTORE_PASSWORD";
     private static final String PROMPT = "> ";
+    private static final AttributedStyle SYSTEM_STYLE = AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN);
+    private static final AttributedStyle ROSTER_STYLE = AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN);
+    private static final AttributedStyle ERROR_STYLE = AttributedStyle.DEFAULT.foreground(AttributedStyle.RED);
+    private static final AttributedStyle BROADCAST_SENDER = AttributedStyle.DEFAULT.bold();
+    private static final AttributedStyle PRIVATE_SENDER =
+            AttributedStyle.DEFAULT.foreground(AttributedStyle.MAGENTA).bold();
 
     public static void main(String[] args) throws IOException, TlsException {
         Options options = parse(args);
@@ -202,7 +211,26 @@ public class ChatClient {
     }
 
     static void render(Message msg, LineReader console) {
-        console.printAbove(line(msg));
+        console.printAbove(styled(msg));
+    }
+
+    static AttributedString styled(Message msg) {
+        return switch (msg.type()) {
+            case BROADCAST -> sender(BROADCAST_SENDER, msg);
+            case PRIVATE_DELIVERY -> sender(PRIVATE_SENDER, msg);
+            case SYSTEM -> new AttributedString(line(msg), SYSTEM_STYLE);
+            case USER_LIST, LOGIN_OK -> new AttributedString(line(msg), ROSTER_STYLE);
+            case ERROR, LOGIN_FAIL -> new AttributedString(line(msg), ERROR_STYLE);
+            default -> new AttributedString(line(msg));
+        };
+    }
+
+    private static AttributedString sender(AttributedStyle style, Message msg) {
+        return new AttributedStringBuilder()
+                .styled(style, "[" + msg.sender() + "]")
+                .append(" ")
+                .append(String.valueOf(msg.body()))
+                .toAttributedString();
     }
 
     static String line(Message msg) {
