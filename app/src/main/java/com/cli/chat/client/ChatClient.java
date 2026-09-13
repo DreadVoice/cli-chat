@@ -70,7 +70,7 @@ public class ChatClient {
              Terminal terminal = TerminalBuilder.builder().system(true).dumb(true).build()) {
 
             LineReader console = lineReader(terminal, options.historyFile());
-            StatusBar statusBar = new StatusBar(terminal);
+            StatusBar statusBar = new StatusBar();
 
             String username = handshake(in, out, console, options.register);
             if (username == null) {
@@ -83,7 +83,7 @@ public class ChatClient {
             reader.setDaemon(true);
             reader.start();
 
-            sendLoop(() -> console.readLine(PROMPT), out, username);
+            sendLoop(() -> console.readLine(statusBar.prompt()), out, username, statusBar);
             saveHistory(console);
         }
     }
@@ -239,7 +239,7 @@ public class ChatClient {
                                        String username, StatusBar statusBar) {
         if (msg.type() == MessageType.USER_LIST) {
             statusBar.online(StatusBar.count(msg.body()));
-            if (statusBar.consumeRefresh()) {
+            if (!statusBar.consumeAsk() && statusBar.consumeRefresh()) {
                 return;
             }
             render(msg, console);
@@ -257,7 +257,7 @@ public class ChatClient {
                 MessageType.USER_LIST, username, null, null, System.currentTimeMillis())));
     }
 
-    static void sendLoop(LineSource console, PrintWriter out, String username) {
+    static void sendLoop(LineSource console, PrintWriter out, String username, StatusBar roster) {
         while (true) {
             String line;
             try {
@@ -271,6 +271,7 @@ public class ChatClient {
                 break;
             }
             if (line.equalsIgnoreCase("/who")) {
+                roster.rosterAskedFor();
                 out.println(encode(new Message(
                         MessageType.USER_LIST, username, null, null, System.currentTimeMillis())));
                 continue;

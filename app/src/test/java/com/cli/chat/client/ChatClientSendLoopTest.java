@@ -31,7 +31,7 @@ class ChatClientSendLoopTest {
                 throw interruption;
             }
             return (String) next;
-        }, new PrintWriter(sent, true), "alice");
+        }, new PrintWriter(sent, true), "alice", new StatusBar());
 
         List<Message> messages = new ArrayList<>();
         for (String line : sent.toString().split("\\R")) {
