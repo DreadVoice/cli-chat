@@ -5,6 +5,23 @@ newline-delimited JSON messages, and see the recent conversation replayed when t
 Accounts live in SQLite with bcrypt-hashed passwords, messages are persisted off the hot path,
 and the whole connection can run over TLS.
 
+## Demo
+
+Joining, chatting, and `/who`, with messages landing above the prompt while a line is half typed:
+
+![Joining, chatting and the roster](docs/demo/01-chat.png)
+
+Coming back later: a refused password asks again, then the room's recent history is replayed.
+
+![A refused password, then the history replay](docs/demo/02-login-history.png)
+
+The same room from another member's terminal.
+
+![The same conversation from bob's seat](docs/demo/03-bobs-seat.png)
+
+These are frames from [asciinema](https://asciinema.org) recordings of the real client against a
+real server; the casts are in [docs/demo](docs/demo) and play with `asciinema play <file>`.
+
 ## Requirements
 
 - Java 21 or newer
@@ -92,7 +109,7 @@ client/              common/              net/                server/           
 | `net`    | How a socket is made: plain TCP or TLS from a keystore or truststore       |
 | `server` | Accept loop, auth, commands, per-client handlers, online registry, history |
 | `db`     | SQLite access, repositories, the asynchronous write queue                  |
-| `client` | Terminal client: JLine reader, colour, history, status bar                 |
+| `client` | Terminal client: JLine reader, colour, history, status prompt              |
 
 `ServerConfig` holds everything the server needs (port, repositories, admins, socket factory)
 and `ServerOptions` parses the command line into it.
@@ -208,11 +225,11 @@ wording.
 | roster, login accepted | green                                  |
 | errors, login refused  | red                                    |
 
-**Status bar.** The bottom line shows the connection state, your name and how many people are
-online, for example `connected  alice  3 online`. The count comes from the roster, which the
-client re-requests whenever somebody joins or leaves; those replies update the bar silently, so
-the only roster you see printed is one you asked for. A terminal without cursor addressing gets
-no bar.
+**Prompt.** The prompt carries your name and how many people are online, for example
+`[alice 3 online]> `. The count comes from the roster, which the client re-requests whenever
+somebody joins or leaves; those replies update the count without printing a roster, so the only
+roster you see is one you asked for with `/who`. The prompt is drawn when it appears, so a count
+that changes mid-line catches up on your next prompt.
 
 ## Protocol
 
